@@ -1,0 +1,98 @@
+name: Scheduled Drift Monitoring
+
+on:
+  schedule:
+    # Run every Monday at 08:00 UTC
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+    inputs:
+      tickers:
+        description: "Comma-separated tickers to check (default: AAPL,MSFT,GOOGL,AMZN,TSLA)"
+        required: false
+        default: "AAPL,MSFT,GOOGL,AMZN,TSLA"
+      force_retrain:
+        description: "Force retrain even if no drift"
+        type: boolean
+        default: false
+
+jobs:
+  monitor:
+    name: Weekly Drift Check + Conditional Retrain
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Parse tickers
+        id: tickers
+        run: |
+          RAW="${{ github.event.inputs.tickers || 'AAPL,MSFT,GOOGL,AMZN,TSLA' }}"
+          echo "list=${RAW//,/ }" >> $GITHUB_OUTPUT
+
+      - name: Run drift check
+        id: drift
+        env:
+          DRIFT_SHARPE_THRESHOLD: "0.15"
+          DRIFT_RETURN_THRESHOLD: "0.10"
+          MONITORING_WINDOW_DAYS: "30"
+        run: |
+          uv run python scripts/check_drift.py --tickers ${{ steps.tickers.outputs.list }} \
+            && echo "drift=false" >> $GITHUB_OUTPUT \
+            || echo "drift=true"  >> $GITHUB_OUTPUT
+
+      - name: Retrain if drift detected (or forced)
+        if: steps.drift.outputs.drift == 'true' || github.event.inputs.force_retrain == 'true'
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          uv run python scripts/retrain.py \
+            --tickers ${{ steps.tickers.outputs.list }} \
+            --budget 100000 \
+            --period 2y \
+            --timesteps 25000 \
+            ${{ github.event.inputs.force_retrain == 'true' && '--force' || '' }}
+
+      - name: Upload drift report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-drift-report-${{ github.run_id }}
+          path: data/drift_report.json
+          if-no-files-found: ignore
+
+      - name: Create GitHub Issue on persistent drift
+        if: steps.drift.outputs.drift == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let body = '## ⚠️ Portfolio Model Drift Detected\n\n';
+            try {
+              const report = JSON.parse(
+                fs.readFileSync('data/drift_report.json', 'utf8')
+              );
+              body += `**Timestamp:** ${report.timestamp}\n\n`;
+              body += `**Reasons:**\n${report.reasons.map(r => `- ${r}`).join('\n')}\n\n`;
+              body += `**Baseline Sharpe:** ${report.baseline_sharpe}\n`;
+              body += `**Current Sharpe:** ${report.current_sharpe}\n\n`;
+              body += `Retraining was triggered automatically.\n`;
+            } catch(e) {
+              body += 'Could not load drift report details.\n';
+            }
+            const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
+            github.rest.issues.create({
+              owner, repo,
+              title: `[MLOps] Model drift detected — ${new Date().toISOString().slice(0,10)}`,
+              body,
+              labels: ['mlops', 'drift', 'automated'],
+            });
