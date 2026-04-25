@@ -230,6 +230,7 @@ def main() -> None:
 })();
 """
     demo = create_interface(theme=get_theme(), css=CUSTOM_CSS, js=_LAUNCH_JS)
+    demo.queue()
     demo.launch(
         server_name="0.0.0.0",
         server_port=GRADIO_PORT,
