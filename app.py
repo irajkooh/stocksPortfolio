@@ -142,7 +142,6 @@ def main() -> None:
     logger.info("Launching Gradio on port %d …", GRADIO_PORT)
     from ui.frontend import create_interface
     from ui.theme import get_theme, CUSTOM_CSS
-    demo = create_interface(theme=get_theme(), css=CUSTOM_CSS)
     _LAUNCH_JS = r"""
 (() => {
   document.querySelector('body').classList.add('dark');
@@ -201,13 +200,13 @@ def main() -> None:
   }).observe(document.documentElement, { childList: true, subtree: true });
 })();
 """
+    demo = create_interface(theme=get_theme(), css=CUSTOM_CSS, js=_LAUNCH_JS)
     demo.launch(
         server_name="0.0.0.0",
         server_port=GRADIO_PORT,
         share=False,
         show_error=True,
         inbrowser=True,
-        js=_LAUNCH_JS,
         allowed_paths=[tempfile.gettempdir()],
     )
 
