@@ -50,12 +50,47 @@ def _kill_port(port: int) -> None:
         logger.debug("Port-kill for %d skipped: %s", port, exc)
 
 
+def _patch_hf_folder() -> None:
+    # HfFolder was removed in huggingface_hub 1.0; Gradio 4.x still imports it.
+    # Inject a shim before any gradio import runs.
+    import huggingface_hub as _hub
+    if hasattr(_hub, "HfFolder"):
+        return
+
+    class HfFolder:
+        @staticmethod
+        def get_token():
+            try:
+                return _hub.get_token()
+            except Exception:
+                return None
+
+        @staticmethod
+        def save_token(token: str) -> None:
+            try:
+                _hub.login(token=token, add_to_git_credential=False)
+            except Exception:
+                pass
+
+        @staticmethod
+        def delete_token() -> None:
+            try:
+                _hub.logout()
+            except Exception:
+                pass
+
+    _hub.HfFolder = HfFolder
+    logger.debug("Injected HfFolder shim into huggingface_hub.")
+
+
 def _start_api() -> None:
     from api.backend import create_api
     uvicorn.run(create_api(), host="0.0.0.0", port=API_PORT, log_level="warning")
 
 
 def main() -> None:
+    _patch_hf_folder()
+
     # ── free ports before binding ─────────────────────────────────────────────
     _kill_port(GRADIO_PORT)
     _kill_port(API_PORT)

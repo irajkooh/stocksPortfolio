@@ -52,7 +52,7 @@ TOPICS = [
     "Exchange-traded fund",
     "Asset allocation",
     "Rebalancing investments",
-    "Long-term investing",
+    "Buy and hold",
     "Passive management",
     "Active management",
     # Fixed income / macro
