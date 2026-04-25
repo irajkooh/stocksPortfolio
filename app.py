@@ -50,6 +50,36 @@ def _kill_port(port: int) -> None:
         logger.debug("Port-kill for %d skipped: %s", port, exc)
 
 
+def _patch_websockets_asyncio() -> None:
+    """Shim websockets.asyncio for yfinance 1.x on websockets < 14."""
+    import sys
+    try:
+        import websockets.asyncio  # noqa: F401
+        return
+    except ModuleNotFoundError:
+        pass
+
+    import types
+    import websockets
+
+    asyncio_mod = types.ModuleType("websockets.asyncio")
+    asyncio_mod.__path__ = []
+    asyncio_mod.__package__ = "websockets.asyncio"
+    sys.modules["websockets.asyncio"] = asyncio_mod
+    websockets.asyncio = asyncio_mod  # type: ignore[attr-defined]
+
+    client_mod = types.ModuleType("websockets.asyncio.client")
+    client_mod.__package__ = "websockets.asyncio"
+    try:
+        from websockets.legacy.client import connect
+        client_mod.connect = connect
+    except ImportError:
+        client_mod.connect = getattr(websockets, "connect", None)
+    sys.modules["websockets.asyncio.client"] = client_mod
+    asyncio_mod.client = client_mod  # type: ignore[attr-defined]
+    logger.debug("Injected websockets.asyncio shim.")
+
+
 def _patch_hf_folder() -> None:
     # HfFolder was removed in huggingface_hub 1.0; Gradio 4.x still imports it.
     # Inject a shim before any gradio import runs.
@@ -89,6 +119,7 @@ def _start_api() -> None:
 
 
 def main() -> None:
+    _patch_websockets_asyncio()
     _patch_hf_folder()
 
     # ── free ports before binding ─────────────────────────────────────────────
