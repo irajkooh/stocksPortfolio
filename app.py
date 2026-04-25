@@ -50,6 +50,34 @@ def _kill_port(port: int) -> None:
         logger.debug("Port-kill for %d skipped: %s", port, exc)
 
 
+def _patch_gradio_client() -> None:
+    """Fix gradio_client 0.9.x crash when Pydantic 2 emits additionalProperties:true (bool).
+
+    gradio_client.utils.get_type does `if "const" in schema` which raises TypeError
+    when schema is a boolean. Guard both get_type and _json_schema_to_python_type.
+    """
+    try:
+        import gradio_client.utils as _gcu
+        _orig_get_type = _gcu.get_type
+        _orig_j2p = _gcu._json_schema_to_python_type
+
+        def _safe_get_type(schema):
+            if not isinstance(schema, dict):
+                return "any"
+            return _orig_get_type(schema)
+
+        def _safe_j2p(schema, defs=None):
+            if not isinstance(schema, dict):
+                return "any"
+            return _orig_j2p(schema, defs)
+
+        _gcu.get_type = _safe_get_type
+        _gcu._json_schema_to_python_type = _safe_j2p
+        logger.debug("Patched gradio_client.utils for boolean additionalProperties.")
+    except Exception as exc:
+        logger.debug("gradio_client patch skipped: %s", exc)
+
+
 def _patch_websockets_asyncio() -> None:
     """Shim websockets.asyncio for yfinance 1.x on websockets < 14."""
     import sys
@@ -119,6 +147,7 @@ def _start_api() -> None:
 
 
 def main() -> None:
+    _patch_gradio_client()
     _patch_websockets_asyncio()
     _patch_hf_folder()
 
