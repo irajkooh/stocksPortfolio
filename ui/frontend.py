@@ -320,8 +320,11 @@ def _portfolio_vs_spy_fig(portfolio_id: int, period: str = "1y") -> go.Figure:
         except Exception as e:
             log.warning("vs-SPY: history fetch failed for %s: %s", t, e)
 
-    spy_hist = get_historical("^GSPC", period=period)
-    spy = spy_hist["Close"].dropna() if spy_hist is not None and not spy_hist.empty else pd.Series(dtype=float)
+    spy = pd.Series(dtype=float)
+    if tickers:  # skip network call when portfolio is empty
+        spy_hist = get_historical("^GSPC", period=period)
+        if spy_hist is not None and not spy_hist.empty:
+            spy = spy_hist["Close"].dropna()
 
     if closes:
         df = pd.concat(closes, axis=1).dropna(how="any")
@@ -456,18 +459,12 @@ def handle_chat(message, history, tts_on, portfolio_id: int = 1):
                _EMPTY, _EMPTY, _EMPTY, _EMPTY, gr.update(visible=False))
         return
 
-    pending = history + [
-        {"role": "user", "content": message},
-        {"role": "assistant", "content": "⏳ Agents working…"},
-    ]
+    pending = history + [[message, "⏳ Agents working…"]]
     yield (gr.update(value="⏳ Thinking…", interactive=False),
            pending, "", "", _EMPTY, _EMPTY, _EMPTY, _EMPTY, gr.update(visible=False))
 
     response, charts, agents_used, status_log = run_agents(message, history, portfolio_id)
-    new_history = history + [
-        {"role": "user", "content": message},
-        {"role": "assistant", "content": response},
-    ]
+    new_history = history + [[message, response]]
     badges_html = agent_badges_html(agents_used)
     tts_speak(response, tts_on)
 

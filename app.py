@@ -230,7 +230,13 @@ def main() -> None:
 })();
 """
     demo = create_interface(theme=get_theme(), css=CUSTOM_CSS, js=_LAUNCH_JS)
-    demo.queue()
+    # Gradio 4.x defaults to concurrency_count=1, serialising all events.
+    # Increase it so startup demo.load() events don't block button clicks.
+    import gradio as _gr
+    if int(_gr.__version__.split(".")[0]) < 5:
+        demo.queue(concurrency_count=10)
+    else:
+        demo.queue()
     demo.launch(
         server_name="0.0.0.0",
         server_port=GRADIO_PORT,
