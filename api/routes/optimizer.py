@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
-from services.rl_optimizer import optimize_portfolio
+from services.optimizer import optimize_portfolio
 
 router = APIRouter(prefix="/optimizer", tags=["optimizer"])
 

@@ -142,7 +142,7 @@ def main() -> None:
     logger.info("Launching Gradio on port %d …", GRADIO_PORT)
     from ui.frontend import create_interface
     from ui.theme import get_theme, CUSTOM_CSS
-    demo = create_interface()
+    demo = create_interface(theme=get_theme(), css=CUSTOM_CSS)
     _LAUNCH_JS = r"""
 (() => {
   document.querySelector('body').classList.add('dark');
@@ -207,9 +207,7 @@ def main() -> None:
         share=False,
         show_error=True,
         inbrowser=True,
-        theme=get_theme(),
         js=_LAUNCH_JS,
-        css=CUSTOM_CSS,
         allowed_paths=[tempfile.gettempdir()],
     )
 

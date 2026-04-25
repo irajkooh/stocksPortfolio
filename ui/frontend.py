@@ -541,12 +541,13 @@ def _switch_portfolio(choice: str):
 
 # ── Interface factory ─────────────────────────────────────────────────────────
 
-def create_interface() -> gr.Blocks:
+def create_interface(theme=None, css: str | None = None) -> gr.Blocks:
     init_db()
     initial_choices = _portfolio_choices()
     initial_choice  = initial_choices[0] if initial_choices else None
 
-    with gr.Blocks(title="AI Portfolio Manager", analytics_enabled=False) as demo:
+    with gr.Blocks(title="AI Portfolio Manager", analytics_enabled=False,
+                   theme=theme, css=css) as demo:
         gr.HTML(_runtime_banner_html())
 
         # Shared portfolio state (holds active portfolio ID integer)
