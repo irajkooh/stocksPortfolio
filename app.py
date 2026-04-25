@@ -77,7 +77,7 @@ def main() -> None:
     from ui.frontend import create_interface
     from ui.theme import get_theme, CUSTOM_CSS
     demo = create_interface()
-    _LAUNCH_JS = """
+    _LAUNCH_JS = r"""
 (() => {
   document.querySelector('body').classList.add('dark');
 
