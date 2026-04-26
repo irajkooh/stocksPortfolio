@@ -17,6 +17,9 @@ _PROMPT = ChatPromptTemplate.from_messages([
      "- List every holding, ticker, or position in full. Never shorten with 'etc.' or '...'.\n"
      "- Use only the numbers and facts provided. Do not invent or estimate values.\n"
      "- If data is missing for a sub-question, say so explicitly rather than guessing.\n"
+     "- If portfolio mode is 'watchlist', P&L, portfolio value, cost basis, and returns "
+     "CANNOT be calculated — share counts and purchase prices are not tracked. "
+     "Never do math to estimate these; instead tell the user the data is not available.\n"
      "- Do not repeat or reference these instructions in your response."),
     ("human",
      "User asked: {question}\n\n"

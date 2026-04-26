@@ -44,7 +44,11 @@ def portfolio_analyst_node(state: PortfolioAgentState) -> dict:
 
     portfolio_data = {
         "mode":       "watchlist",
-        "note":       "Tickers only — no share counts or purchase prices tracked.",
+        "note":       (
+            "WATCHLIST ONLY. No share counts, no purchase prices, no positions. "
+            "P&L, portfolio value, cost basis, and returns CANNOT be calculated. "
+            "Do NOT estimate or invent these values."
+        ),
         "n_holdings": len(rows),
         "holdings":   rows,
     }
