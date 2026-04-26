@@ -116,6 +116,15 @@ button:active {
 .message.user   { background: #1F2937 !important; border: 1px solid #374151; }
 .message.bot    { background: #0d1929 !important; border: 1px solid #1F2937; }
 
+/* ── Chatbot response headings — keep small, never H1/H2 size ── */
+.message.bot h1, .message.bot h2, .message.bot h3,
+.message.bot h4, .message.bot h5, .message.bot h6 {
+    font-size: 0.95rem !important;
+    font-weight: 600 !important;
+    margin: 0.6em 0 0.2em !important;
+    color: #93C5FD !important;
+}
+
 /* ── Dataframe ───────────────────────────────────────────── */
 .dataframe thead tr th {
     background: #1F2937 !important;
