@@ -1,11 +1,19 @@
 """Synthesizer Agent — merges all agent outputs into one coherent response."""
 import json
 import logging
+import re
 from agents.state import PortfolioAgentState
 from services.llm_service import get_llm
 from langchain_core.prompts import ChatPromptTemplate
 
 logger = logging.getLogger(__name__)
+
+_BIG_HEADING = re.compile(r'^#{1,3}(?= )', re.MULTILINE)
+
+
+def _cap_headings(text: str) -> str:
+    """Demote H1/H2/H3 → H4 so chat responses don't render giant section titles."""
+    return _BIG_HEADING.sub('####', text)
 
 _PROMPT = ChatPromptTemplate.from_messages([
     ("system",
@@ -86,6 +94,6 @@ def synthesizer_node(state: PortfolioAgentState) -> dict:
         response = combined        # graceful fallback: return raw data
 
     return {
-        "final_response": response.strip(),
+        "final_response": _cap_headings(response.strip()),
         "agent_status":   state.get("agent_status", []) + ["✅ Synthesizer: done"],
     }
