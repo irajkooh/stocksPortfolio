@@ -22,9 +22,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-from core.database import init_db
-from services.rl_optimizer import optimize_portfolio
-from monitoring.metrics_tracker import record_run, load_history
+from core.database import init_db  # noqa: E402
+from services.rl_optimizer import optimize_portfolio  # noqa: E402
+from monitoring.metrics_tracker import record_run, load_history  # noqa: E402
 
 
 def main():

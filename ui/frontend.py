@@ -1,12 +1,32 @@
 """Main Gradio Blocks layout — multi-agent powered, multi-portfolio."""
 import logging
 import os
-import re
 from datetime import date, timedelta
 import gradio as gr
 import pandas as pd
 import plotly.graph_objects as go
 from pydantic import ValidationError
+
+from core.database import SessionLocal, init_db
+from core.models import HoldingCreate, HoldingDB, PortfolioDB
+from services.stock_service import (
+    get_stock_info,
+    get_period_changes,
+)
+from services.llm_service import llm_display_name
+from ui.components.dashboard import (
+    live_watchlist_rows,
+    last_plan_rows,
+    last_plan_pie,
+)
+from ui.components.chatbot import run_agents, tts_html, agent_badges_html
+from ui.components.optimizer_ui import (
+    run_optimize,
+    sync_slider_to_text,
+    sync_text_to_slider,
+)
+from core import runtime
+from core import config as _cfg
 
 log = logging.getLogger(__name__)
 
@@ -47,31 +67,6 @@ flowchart TD
 </div>
 </div>
 """
-
-from core.database import SessionLocal, init_db
-from core.models import HoldingCreate, HoldingDB, PortfolioDB
-from services.stock_service import (
-    get_batch_prices,
-    get_stock_info,
-    get_period_changes,
-    get_historical,
-    validate_ticker,
-)
-from services.llm_service import llm_display_name
-from ui.theme import get_theme, CUSTOM_CSS
-from ui.components.dashboard import (
-    live_watchlist_rows,
-    last_plan_rows,
-    last_plan_pie,
-)
-from ui.components.chatbot import run_agents, tts_html, agent_badges_html
-from ui.components.optimizer_ui import (
-    run_optimize,
-    sync_slider_to_text,
-    sync_text_to_slider,
-)
-from core import runtime
-from core import config as _cfg
 
 
 def _llm_label() -> str:
@@ -837,7 +832,6 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                 )
 
                 badges_out     = gr.HTML(value="", visible=True)
-                status_log_out = gr.HTML(value="", visible=False, elem_classes="agent-log")
 
                 # ── Sample questions (3 rows × 4) ─────────────────────────────
                 _SAMPLE_QS = [

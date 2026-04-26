@@ -205,7 +205,8 @@ def _build_frontier_line(mu: np.ndarray, cov: np.ndarray,
                       options={"ftol": 1e-9, "maxiter": 300})
     if not res_mv.success:
         return []
-    w_mv = np.clip(res_mv.x, 0.0, None); w_mv /= w_mv.sum()
+    w_mv = np.clip(res_mv.x, 0.0, None)
+    w_mv /= w_mv.sum()
     r_min = float(w_mv @ mu_r)
     r_max = max_w_risky * float(np.max(mu_r)) + (1.0 - max_w_risky) * float(np.min(mu_r))
     if r_max <= r_min + 1e-6:
@@ -224,7 +225,8 @@ def _build_frontier_line(mu: np.ndarray, cov: np.ndarray,
                        bounds=bounds, constraints=cons,
                        options={"ftol": 1e-9, "maxiter": 300})
         if res.success:
-            w = np.clip(res.x, 0.0, None); w /= w.sum()
+            w = np.clip(res.x, 0.0, None)
+            w /= w.sum()
             pts.append({"vol": float(np.sqrt(w @ cov_r @ w)), "return": float(w @ mu_r)})
             x0 = res.x.copy()
 

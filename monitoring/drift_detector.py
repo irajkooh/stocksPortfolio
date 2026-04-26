@@ -14,14 +14,11 @@ scripts/check_drift.py reflects whether retraining is needed (used by CI/CD).
 import json
 import logging
 import os
-from datetime import datetime, timedelta
-from pathlib import Path
+from datetime import datetime
 from typing import NamedTuple
 
-import numpy as np
 import pandas as pd
 from scipy import stats
-from sklearn.preprocessing import KBinsDiscretizer
 
 from core.config import DATA_DIR
 from monitoring.metrics_tracker import load_history
@@ -95,7 +92,6 @@ def _data_drift(tickers: list[str], window_days: int = MONITORING_WINDOW) -> tup
         return False, []
 
     drifted = []
-    cutoff  = datetime.utcnow() - timedelta(days=window_days * 2)
 
     for ticker in tickers:
         try:

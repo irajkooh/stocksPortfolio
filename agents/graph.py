@@ -46,7 +46,7 @@ from agents.synthesizer        import synthesizer_node
 logger = logging.getLogger(__name__)
 
 
-def _build() -> "CompiledGraph":
+def _build():
     g = StateGraph(PortfolioAgentState)
 
     g.add_node("supervisor",        supervisor_node)

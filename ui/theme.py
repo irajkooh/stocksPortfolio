@@ -34,7 +34,7 @@ def get_theme() -> gr.Theme:
         input_border_color            = PALETTE["border"],
         input_border_color_focus      = PALETTE["cyan"],
         button_primary_background_fill       = f"linear-gradient(135deg, {PALETTE['cyan']}, {PALETTE['purple']})",
-        button_primary_background_fill_hover = f"linear-gradient(135deg, #00B8E0, #6A1FA6)",
+        button_primary_background_fill_hover = "linear-gradient(135deg, #00B8E0, #6A1FA6)",
         button_primary_text_color            = "white",
         button_secondary_background_fill      = PALETTE["surface2"],
         button_secondary_background_fill_hover= PALETTE["border"],

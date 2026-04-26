@@ -5,9 +5,7 @@ Metrics recorded after each optimisation run are used by drift_detector.
 import json
 import logging
 from datetime import datetime
-from pathlib import Path
 
-import numpy as np
 import pandas as pd
 from sqlalchemy import Column, Integer, Float, String, DateTime, Text, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -65,7 +63,8 @@ def record_run(result: dict, run_id: str | None = None) -> str:
             annual_vol    = m.get("rl_annual_vol"),
             weights_json  = json.dumps(result.get("weights", {})),
         )
-        db.add(rec); db.commit()
+        db.add(rec)
+        db.commit()
         logger.info("Recorded run %s: Sharpe=%.3f", run_id, m.get("rl_sharpe", 0))
         return run_id
     finally:

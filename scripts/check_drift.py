@@ -13,7 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 
-from monitoring.drift_detector import check_drift
+from monitoring.drift_detector import check_drift  # noqa: E402
 
 
 def main():
