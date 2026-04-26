@@ -14,6 +14,7 @@ import uvicorn
 
 from core.config import API_PORT, GRADIO_PORT, IS_HF_SPACE
 from core.database import init_db
+from core.persistence import pull_db_from_hub
 
 logging.basicConfig(
     level=logging.INFO,
@@ -154,6 +155,9 @@ def main() -> None:
     # ── free ports before binding ─────────────────────────────────────────────
     _kill_port(GRADIO_PORT)
     _kill_port(API_PORT)
+
+    logger.info("Pulling persisted DB from HF Dataset (Space only) …")
+    pull_db_from_hub()
 
     logger.info("Initialising database …")
     init_db()

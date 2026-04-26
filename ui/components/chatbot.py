@@ -1,15 +1,11 @@
 """Chatbot component — delegates to the LangGraph multi-agent graph."""
+import base64
+import io
 import logging
-import subprocess
-import sys
-import threading
 from agents.graph import get_graph
 from agents.state import empty_state
 
 logger = logging.getLogger(__name__)
-
-_tts_proc: subprocess.Popen | None = None
-_tts_lock = threading.Lock()
 
 _AGENT_LABELS = {
     "market_intel":      "📈 Market Intel",
@@ -53,45 +49,35 @@ def run_agents(
         return f"⚠️ Agent error: {exc}", [], [], []
 
 
-def tts_stop() -> None:
-    """Terminate any in-progress `say` playback."""
-    global _tts_proc
-    with _tts_lock:
-        proc, _tts_proc = _tts_proc, None
-    if proc and proc.poll() is None:
-        try:
-            proc.terminate()
-        except Exception as exc:
-            logger.warning("TTS stop failed: %s", exc)
+def tts_html(text, enabled: bool = True) -> str:
+    """Synthesise *text* with gTTS, return an HTML <audio autoplay> tag.
 
-
-def tts_speak(text, enabled: bool = True) -> None:
-    """Play TTS through macOS `say` in a background thread. Cancels any prior playback."""
+    Cross-platform (works on HF Space Linux, not just macOS). Returns "" when
+    disabled, empty, or on any failure — caller can drop straight into a
+    gr.HTML output.
+    """
     if not enabled or not text:
-        return
-    if sys.platform != "darwin":
-        logger.warning("TTS: unsupported platform %s", sys.platform)
-        return
-
+        return ""
     if not isinstance(text, str):
         text = str(text)
     snippet = text[:2000].replace("\n", " ").strip()
     if not snippet:
-        return
+        return ""
 
-    tts_stop()
+    try:
+        from gtts import gTTS
+        buf = io.BytesIO()
+        gTTS(snippet, lang="en").write_to_fp(buf)
+        b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+    except Exception as exc:
+        logger.warning("TTS synthesis failed: %s", exc)
+        return ""
 
-    def _play() -> None:
-        global _tts_proc
-        try:
-            proc = subprocess.Popen(["say", snippet])
-            with _tts_lock:
-                _tts_proc = proc
-            proc.wait()
-        except Exception as exc:
-            logger.warning("TTS playback failed: %s", exc)
-
-    threading.Thread(target=_play, daemon=True).start()
+    return (
+        f'<audio autoplay controls style="width:100%">'
+        f'<source src="data:audio/mp3;base64,{b64}" type="audio/mp3">'
+        f'</audio>'
+    )
 
 
 def agent_badges_html(agents_used: list[str]) -> str:

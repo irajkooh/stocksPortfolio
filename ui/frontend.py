@@ -64,7 +64,7 @@ from ui.components.dashboard import (
     last_plan_rows,
     last_plan_pie,
 )
-from ui.components.chatbot import run_agents, tts_speak, tts_stop, agent_badges_html
+from ui.components.chatbot import run_agents, tts_html, agent_badges_html
 from ui.components.optimizer_ui import (
     run_optimize,
     sync_slider_to_text,
@@ -312,22 +312,38 @@ def _portfolio_vs_spy_fig(portfolio_id: int, period: str = "1y") -> go.Figure:
     )
 
     closes: dict[str, pd.Series] = {}
-    for t in tickers:
-        try:
-            hist = get_historical(t, period=period)
-            if hist is not None and not hist.empty:
-                closes[t] = hist["Close"].dropna()
-        except Exception as e:
-            log.warning("vs-SPY: history fetch failed for %s: %s", t, e)
-
     spy = pd.Series(dtype=float)
-    if tickers:  # skip network call when portfolio is empty
-        spy_hist = get_historical("^GSPC", period=period)
-        if spy_hist is not None and not spy_hist.empty:
-            spy = spy_hist["Close"].dropna()
+
+    if tickers:
+        import yfinance as yf
+        symbols = list(dict.fromkeys(tickers + ["^GSPC"]))
+        try:
+            raw = yf.download(symbols, period=period, group_by="ticker",
+                              auto_adjust=True, threads=False, progress=False)
+        except Exception as e:
+            log.warning("vs-SPY: batched download failed: %s", e)
+            raw = None
+
+        if raw is not None and not raw.empty:
+            for t in symbols:
+                try:
+                    series = raw[t]["Close"].dropna() if len(symbols) > 1 else raw["Close"].dropna()
+                except Exception:
+                    series = pd.Series(dtype=float)
+                if t == "^GSPC":
+                    spy = series
+                elif not series.empty:
+                    closes[t] = series
+        log.info("vs-SPY: tickers=%d, rows per ticker=%s, spy_rows=%d",
+                 len(tickers),
+                 {t: len(s) for t, s in closes.items()},
+                 len(spy))
 
     if closes:
         df = pd.concat(closes, axis=1).dropna(how="any")
+        if len(df) < 5:
+            log.warning("vs-SPY: only %d aligned rows after dropna — insufficient", len(df))
+            df = df.iloc[0:0]
         if not df.empty:
             norm = df.div(df.iloc[0]).mul(100.0)
 
@@ -459,21 +475,22 @@ def handle_chat(message, history, tts_on, portfolio_id: int = 1):
                _EMPTY, _EMPTY, _EMPTY, _EMPTY, gr.update(visible=False))
         return
 
-    pending = history + [[message, "⏳ Agents working…"]]
+    user_msg = {"role": "user", "content": message}
+    pending = history + [user_msg, {"role": "assistant", "content": "⏳ Agents working…"}]
     yield (gr.update(value="⏳ Thinking…", interactive=False),
            pending, "", "", _EMPTY, _EMPTY, _EMPTY, _EMPTY, gr.update(visible=False))
 
     response, charts, agents_used, status_log = run_agents(message, history, portfolio_id)
-    new_history = history + [[message, response]]
+    new_history = history + [user_msg, {"role": "assistant", "content": response}]
     badges_html = agent_badges_html(agents_used)
-    tts_speak(response, tts_on)
+    audio_html  = tts_html(response, tts_on)
 
     def _fig(i):
         return charts[i] if i < len(charts) else _EMPTY
 
     yield (
         gr.update(value="", interactive=True),
-        new_history, badges_html, "",
+        new_history, badges_html, audio_html,
         _fig(0), _fig(1), _fig(2), _fig(3),
         gr.update(visible=bool(charts)),
     )
@@ -882,14 +899,15 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                     handle_chat, [msg_box, chatbot, tts_state, portfolio_state], _chat_outs
                 ).then(fn=None, js=_SCROLL_JS)
 
-                # TTS toggle: speak last assistant message, or stop playback in progress.
+                # TTS toggle: speak last assistant message, or clear playback in progress.
                 def _toggle_tts(is_on: bool, history: list):
                     if is_on:
-                        tts_stop()
+                        # Currently playing → clear the audio element to stop it.
                         return (
                             False,
                             gr.update(value="🔊 Read", variant="secondary",
                                       elem_classes="tts-btn-off"),
+                            "",
                         )
                     def _as_text(x) -> str:
                         if x is None:
@@ -913,15 +931,19 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                             if last:
                                 break
                     if not last.strip():
-                        return (False, gr.update())
-                    tts_speak(last, enabled=True)
+                        return (False, gr.update(), "")
+                    audio = tts_html(last, enabled=True)
+                    if not audio:
+                        return (False, gr.update(), "")
                     return (
                         True,
                         gr.update(value="⏹ Stop", variant="stop",
                                   elem_classes="tts-btn-on"),
+                        audio,
                     )
 
-                tts_btn.click(_toggle_tts, [tts_state, chatbot], [tts_state, tts_btn])
+                tts_btn.click(_toggle_tts, [tts_state, chatbot],
+                              [tts_state, tts_btn, audio_out])
 
                 _COPY_JS = """() => {
     const root = document.querySelector('#main-chatbot');

@@ -1,7 +1,8 @@
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker
 from core.config import DATABASE_URL
 from core.models import Base
+from core.persistence import schedule_db_push
 
 engine = create_engine(
     DATABASE_URL,
@@ -9,6 +10,11 @@ engine = create_engine(
     pool_pre_ping=True,
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+@event.listens_for(SessionLocal, "after_commit")
+def _persist_after_commit(session) -> None:
+    schedule_db_push()
 
 
 def _maybe_migrate() -> None:

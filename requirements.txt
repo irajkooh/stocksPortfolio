@@ -1,5 +1,5 @@
 # ── Web framework ─────────────────────────────────────────
-gradio==4.44.1
+gradio==6.9.0
 fastapi>=0.111.0
 starlette>=0.37.2,<1.0.0
 uvicorn[standard]>=0.30.0
