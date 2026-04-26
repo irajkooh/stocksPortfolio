@@ -171,8 +171,12 @@ def main() -> None:
     logger.info("Launching Gradio on port %d …", GRADIO_PORT)
     from ui.frontend import create_interface
     from ui.theme import get_theme, CUSTOM_CSS
+    # NOTE: Gradio wraps this as `await (${js})()`, so it MUST be an arrow
+    # function expression (not an IIFE). Wrapping it as an IIFE produces
+    # `await ((()=>{...})();)()` which is a SyntaxError and aborts all
+    # client-side init — every button silently stops working.
     _LAUNCH_JS = r"""
-(() => {
+() => {
   document.querySelector('body').classList.add('dark');
 
   const slug = s => (s || 'plot').toString().toLowerCase()
@@ -220,7 +224,7 @@ def main() -> None:
         if (n.nodeType === 1 && n.tagName === 'A' && n.hasAttribute('download'))
           { applyName(n); return; }
   }).observe(document.documentElement, { childList: true, subtree: true });
-})();
+}
 """
     demo = create_interface(theme=get_theme(), css=CUSTOM_CSS, js=_LAUNCH_JS)
     demo.queue(default_concurrency_limit=10)
