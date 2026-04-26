@@ -212,14 +212,7 @@ def main() -> None:
     return _origClick.call(this);
   };
 
-  // Path 2 — Plotly calls a.dispatchEvent(new MouseEvent('click', ...))
-  const _origDispatch = EventTarget.prototype.dispatchEvent;
-  EventTarget.prototype.dispatchEvent = function(ev) {
-    if (ev.type === 'click' && this instanceof HTMLAnchorElement) applyName(this);
-    return _origDispatch.call(this, ev);
-  };
-
-  // Path 3 — fallback: watch for <a download="..."> inserted into the DOM
+  // Path 2 — fallback: watch for <a download="..."> inserted into the DOM
   new MutationObserver(muts => {
     if (!_gd) return;
     for (const m of muts)
@@ -230,7 +223,7 @@ def main() -> None:
 })();
 """
     demo = create_interface(theme=get_theme(), css=CUSTOM_CSS, js=_LAUNCH_JS)
-    demo.queue()
+    demo.queue(default_concurrency_limit=10)
     demo.launch(
         server_name="0.0.0.0",
         server_port=GRADIO_PORT,
