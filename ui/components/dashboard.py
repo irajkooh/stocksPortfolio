@@ -124,6 +124,8 @@ def last_plan_rows(portfolio_id: int) -> tuple[list[list], dict | None]:
             "expected_return": row.expected_return,
             "expected_vol":    row.expected_vol,
             "sharpe":          row.sharpe,
+            "sortino":         row.sortino,
+            "var_95":          row.var_95,
             "cash_dollars":    row.cash_dollars,
             "created_at":      row.created_at,
         }

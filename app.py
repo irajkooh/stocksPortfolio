@@ -4,12 +4,14 @@ Kills any process bound to the app ports, then starts FastAPI in a
 background thread and launches Gradio on port 7860.
 """
 import logging
+import os
 import subprocess
 import sys
 import tempfile
 import threading
 import time
 
+import requests as _requests
 import uvicorn
 
 from core.config import API_PORT, GRADIO_PORT, IS_HF_SPACE
@@ -147,6 +149,44 @@ def _start_api() -> None:
     uvicorn.run(create_api(), host="0.0.0.0", port=API_PORT, log_level="warning")
 
 
+def _ping_self(url: str) -> None:
+    """Lightweight GET to keep the HF Space from going to sleep."""
+    try:
+        _requests.get(url, timeout=10)
+        logger.info("[keep-alive] pinged %s", url)
+    except Exception as exc:
+        logger.warning("[keep-alive] ping failed: %s", exc)
+
+
+def start_keep_alive_scheduler(space_url: str):
+    from apscheduler.schedulers.background import BackgroundScheduler
+    from apscheduler.triggers.cron import CronTrigger
+    from apscheduler.triggers.interval import IntervalTrigger
+
+    scheduler = BackgroundScheduler(timezone="UTC", daemon=True)
+
+    # Every 30 minutes — resets HF inactivity timer
+    scheduler.add_job(
+        _ping_self,
+        trigger=IntervalTrigger(minutes=30),
+        args=[space_url],
+        id="keep_alive_30m",
+        replace_existing=True,
+    )
+
+    # Daily at 06:00 UTC — warm-up before market open
+    scheduler.add_job(
+        _ping_self,
+        trigger=CronTrigger(hour=6, minute=0),
+        args=[space_url],
+        id="keep_alive_daily",
+        replace_existing=True,
+    )
+
+    scheduler.start()
+    return scheduler
+
+
 def main() -> None:
     _patch_gradio_client()
     _patch_websockets_asyncio()
@@ -171,6 +211,16 @@ def main() -> None:
 
     logger.info("Starting FastAPI on port %d (background) …", API_PORT)
     threading.Thread(target=_start_api, daemon=True).start()
+
+    # Keep-alive scheduler — only on HF Space (SPACE_ID is set automatically by HF).
+    # Format: SPACE_ID="username/spacename" → "https://username-spacename.hf.space"
+    if IS_HF_SPACE:
+        space_id = os.environ.get("SPACE_ID", "")
+        if "/" in space_id:
+            user, name = space_id.split("/", 1)
+            hf_space_url = f"https://{user}-{name}.hf.space".lower()
+            start_keep_alive_scheduler(hf_space_url)
+            logger.info("[keep-alive] scheduler started for %s", hf_space_url)
 
     logger.info("Launching Gradio on port %d …", GRADIO_PORT)
     from ui.frontend import create_interface

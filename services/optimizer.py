@@ -105,6 +105,18 @@ def optimize_portfolio(
     exp_vol = float(np.sqrt(w_star @ cov_aug @ w_star))
     sharpe  = (exp_ret - risk_free_rate) / exp_vol if exp_vol > 1e-9 else 0.0
 
+    # Realized portfolio daily returns (cash leg contributes its deterministic
+    # rf/252 daily yield) — used for downside-only Sortino and historical VaR.
+    risky_w     = w_star[:n_risky]
+    cash_w      = float(w_star[-1])
+    port_daily  = returns_df.values @ risky_w + cash_w * (risk_free_rate / TRADING_DAYS)
+    neg         = port_daily[port_daily < 0]
+    downside_ann = float(neg.std() * np.sqrt(TRADING_DAYS)) if len(neg) > 1 else 0.0
+    sortino     = (exp_ret - risk_free_rate) / downside_ann if downside_ann > 1e-9 else 0.0
+    # 95% historical 1-day VaR scaled to annual via sqrt-of-time. Stored as a
+    # positive magnitude (e.g. 0.18 = "5% chance of losing >18% over a year").
+    var_95      = float(-np.percentile(port_daily, 5) * np.sqrt(TRADING_DAYS))
+
     allocations: dict[str, dict[str, float]] = {}
     for i, t in enumerate(used):
         w = float(w_star[i])
@@ -132,6 +144,8 @@ def optimize_portfolio(
             "expected_return": exp_ret,
             "expected_vol":    exp_vol,
             "sharpe":          sharpe,
+            "sortino":         sortino,
+            "var_95":          var_95,
             "target_vol":      target_vol,
             "risk_free_rate":  risk_free_rate,
         },
@@ -318,6 +332,8 @@ def save_allocation(portfolio_id: int, result: dict[str, Any],
         row.expected_return  = float(m["expected_return"])
         row.expected_vol     = float(m["expected_vol"])
         row.sharpe           = float(m["sharpe"])
+        row.sortino          = float(m.get("sortino", 0.0) or 0.0)
+        row.var_95           = float(m.get("var_95", 0.0) or 0.0)
         row.risk_free_rate   = float(m["risk_free_rate"])
         row.cash_dollars     = float(result["cash_dollars"])
         row.allocations_json = payload

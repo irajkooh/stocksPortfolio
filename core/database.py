@@ -35,6 +35,10 @@ def _maybe_migrate() -> None:
         with engine.begin() as conn:
             if "frontier_json" not in alloc_cols:
                 conn.execute(text("ALTER TABLE portfolio_allocations ADD COLUMN frontier_json TEXT DEFAULT '[]'"))
+            if "sortino" not in alloc_cols:
+                conn.execute(text("ALTER TABLE portfolio_allocations ADD COLUMN sortino REAL"))
+            if "var_95" not in alloc_cols:
+                conn.execute(text("ALTER TABLE portfolio_allocations ADD COLUMN var_95 REAL"))
 
 
 def _ensure_default_portfolio() -> None:

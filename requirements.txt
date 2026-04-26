@@ -61,3 +61,6 @@ huggingface-hub>=0.23.0
 requests>=2.32.0
 websockets>=12.0
 audioop-lts
+
+# ── Keep-alive scheduler (HF Space) ───────────────────────
+APScheduler>=3.10.0

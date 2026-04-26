@@ -57,6 +57,8 @@ class PortfolioAllocationDB(Base):
     expected_return  = Column(Float, nullable=False)
     expected_vol     = Column(Float, nullable=False)
     sharpe           = Column(Float, nullable=False)
+    sortino          = Column(Float, nullable=True)
+    var_95           = Column(Float, nullable=True)
     risk_free_rate   = Column(Float, nullable=False)
     cash_dollars     = Column(Float, nullable=False)
     allocations_json = Column(Text, nullable=False)

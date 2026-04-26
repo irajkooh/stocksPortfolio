@@ -388,14 +388,18 @@ def refresh_dashboard(portfolio_id: int = 1):
     vs_spy = _portfolio_vs_spy_fig(portfolio_id)
     rows, m = last_plan_rows(portfolio_id)
     if m is None:
-        return (watch, "—", "—", "—", "—", "—", _placeholder(420), [],
+        return (watch, "—", "—", "—", "—", "—", "—", "—", _placeholder(420), [],
                 "_Run the Optimizer to see your plan._", vs_spy)
+    sortino_s = f"{m['sortino']:.3f}" if m.get("sortino") is not None else "—"
+    var_s     = f"{m['var_95']*100:.2f}%" if m.get("var_95") is not None else "—"
     return (
         watch,
         f"${m['budget']:,.0f}",
         f"{m['expected_return']*100:.2f}%",
         f"{m['expected_vol']*100:.2f}%",
         f"{m['sharpe']:.3f}",
+        sortino_s,
+        var_s,
         f"${m['cash_dollars']:,.0f}",
         last_plan_pie(portfolio_id),
         rows,
@@ -499,7 +503,7 @@ def handle_chat(message, history, tts_on, portfolio_id: int = 1):
 # ── Portfolio-switch handler (refreshes all tabs) ─────────────────────────────
 
 def _load_saved_optimizer(pid: int) -> tuple:
-    """Return 9-element optimizer output tuple from saved PortfolioAllocationDB, or blanks."""
+    """Return 11-element optimizer output tuple from saved PortfolioAllocationDB, or blanks."""
     import json
     from core.database import SessionLocal
     from core.models import PortfolioAllocationDB
@@ -508,7 +512,7 @@ def _load_saved_optimizer(pid: int) -> tuple:
     with SessionLocal() as s:
         row = s.get(PortfolioAllocationDB, pid)
         if row is None:
-            return ("", "", "", "", "", None, None, None, "")
+            return ("", "", "", "", "", "", "", None, None, None, "")
         allocs_json   = row.allocations_json
         frontier_json = row.frontier_json or "[]"
         cash_dollars  = row.cash_dollars
@@ -517,6 +521,8 @@ def _load_saved_optimizer(pid: int) -> tuple:
             "expected_return": row.expected_return,
             "expected_vol":    row.expected_vol,
             "sharpe":          row.sharpe,
+            "sortino":         row.sortino,
+            "var_95":          row.var_95,
         }
 
     allocs = json.loads(allocs_json)
@@ -528,11 +534,15 @@ def _load_saved_optimizer(pid: int) -> tuple:
         "warnings":        [],
     }
     fig_p, fig_b, fig_f = build_plots(result)
+    sortino_s = f"{metrics['sortino']:.3f}" if metrics.get("sortino") is not None else "—"
+    var_s     = f"{metrics['var_95']*100:.2f}%" if metrics.get("var_95") is not None else "—"
     return (
         "✅ Last saved",
         f"{metrics['expected_return']*100:.2f}%",
         f"{metrics['expected_vol']*100:.2f}%",
         f"{metrics['sharpe']:.3f}",
+        sortino_s,
+        var_s,
         f"${cash_dollars:,.0f}",
         fig_p, fig_b, fig_f,
         commentary,
@@ -654,11 +664,13 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                 )
                 gr.Markdown("### Last optimized plan")
                 with gr.Row():
-                    d_budget = gr.Textbox(label="Budget",          interactive=False)
-                    d_ret    = gr.Textbox(label="Expected return",  interactive=False)
-                    d_vol    = gr.Textbox(label="Expected vol",     interactive=False)
-                    d_shrp   = gr.Textbox(label="Sharpe",           interactive=False)
-                    d_cash   = gr.Textbox(label="Cash",             interactive=False)
+                    d_budget  = gr.Textbox(label="Budget",          interactive=False)
+                    d_ret     = gr.Textbox(label="Expected return",  interactive=False)
+                    d_vol     = gr.Textbox(label="Expected vol",     interactive=False)
+                    d_shrp    = gr.Textbox(label="Sharpe",           interactive=False)
+                    d_sortino = gr.Textbox(label="Sortino",          interactive=False)
+                    d_var     = gr.Textbox(label="VaR 95% (ann.)",   interactive=False)
+                    d_cash    = gr.Textbox(label="Cash",             interactive=False)
                 dash_pie = gr.Plot(label="Allocation", min_width=400, value=_placeholder(420))
                 dash_table = gr.Dataframe(
                     headers=["Ticker", "Weight", "Dollars", "Shares", "Price"],
@@ -672,7 +684,8 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                 refresh_btn = gr.Button("🔄 Refresh dashboard", variant="primary",
                                         elem_classes="btn-glow")
 
-                _dash_outs = [dash_watch, d_budget, d_ret, d_vol, d_shrp, d_cash,
+                _dash_outs = [dash_watch, d_budget, d_ret, d_vol, d_shrp,
+                              d_sortino, d_var, d_cash,
                               dash_pie, dash_table, d_stamp, dash_vs_spy]
                 refresh_btn.click(refresh_dashboard, [portfolio_state], _dash_outs)
                 demo.load(refresh_dashboard, [portfolio_state], _dash_outs)
@@ -763,10 +776,12 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                     with gr.Column(scale=3):
                         opt_status = gr.Markdown()
                         with gr.Row():
-                            m_ret  = gr.Textbox(label="Expected return", interactive=False)
-                            m_vol  = gr.Textbox(label="Expected vol",    interactive=False)
-                            m_shrp = gr.Textbox(label="Sharpe",          interactive=False)
-                            m_cash = gr.Textbox(label="Cash reserve ($)", interactive=False)
+                            m_ret     = gr.Textbox(label="Expected return", interactive=False)
+                            m_vol     = gr.Textbox(label="Expected vol",    interactive=False)
+                            m_shrp    = gr.Textbox(label="Sharpe",          interactive=False)
+                            m_sortino = gr.Textbox(label="Sortino",         interactive=False)
+                            m_var     = gr.Textbox(label="VaR 95% (ann.)",  interactive=False)
+                            m_cash    = gr.Textbox(label="Cash reserve ($)", interactive=False)
                         fig_pie      = gr.Plot(label="Allocation")
                         fig_bar      = gr.Plot(label="Dollar allocation")
                         fig_frontier = gr.Plot(label="Efficient frontier")
@@ -785,7 +800,8 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                     run_optimize,
                     inputs=[opt_budget, opt_target_vol, opt_rf_text,
                             opt_lookback, opt_frontier, portfolio_state],
-                    outputs=[opt_status, m_ret, m_vol, m_shrp, m_cash,
+                    outputs=[opt_status, m_ret, m_vol, m_shrp,
+                             m_sortino, m_var, m_cash,
                              fig_pie, fig_bar, fig_frontier, opt_commentary]
                             + _dash_outs,
                 )
@@ -985,7 +1001,8 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
         _switch_outs = (
             [portfolio_state] + _dash_outs + [watchlist_df, remove_dd, edit_dd]
             + [chatbot]
-            + [opt_status, m_ret, m_vol, m_shrp, m_cash,
+            + [opt_status, m_ret, m_vol, m_shrp,
+               m_sortino, m_var, m_cash,
                fig_pie, fig_bar, fig_frontier, opt_commentary]
         )
 
@@ -1008,7 +1025,8 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
         demo.load(
             _load_saved_optimizer,
             [portfolio_state],
-            [opt_status, m_ret, m_vol, m_shrp, m_cash,
+            [opt_status, m_ret, m_vol, m_shrp,
+             m_sortino, m_var, m_cash,
              fig_pie, fig_bar, fig_frontier, opt_commentary],
         )
 
