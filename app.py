@@ -225,13 +225,13 @@ def main() -> None:
     logger.info("Launching Gradio on port %d …", GRADIO_PORT)
     from ui.frontend import create_interface
     from ui.theme import get_theme, CUSTOM_CSS
-    # NOTE: Gradio wraps this as `await (${js})()`, so it MUST be an arrow
-    # function expression (not an IIFE). Wrapping it as an IIFE produces
-    # `await ((()=>{...})();)()` which is a SyntaxError and aborts all
-    # client-side init — every button silently stops working.
-    _LAUNCH_JS = r"""
-() => {
-  document.querySelector('body').classList.add('dark');
+
+    # Body of the Plotly-download patch, used for both `js=` (arrow-fn body)
+    # and `head=` (raw <script> body). The head= path is the reliable one —
+    # Gradio 6.9.0's frontend bundle does not appear to evaluate the top-level
+    # `js=` config field, but `head=` is injected verbatim into <head>.
+    _PATCH_BODY = r"""
+  try { document.querySelector('body').classList.add('dark'); } catch (_) {}
 
   const slug = s => (s || 'plot').toString().toLowerCase()
     .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'plot';
@@ -242,44 +242,73 @@ def main() -> None:
   };
   const readTitle = gd => {
     const t = ((gd && (gd._fullLayout || gd.layout)) || {}).title;
-    return t ? (typeof t === 'string' ? t : (t.text || 'plot')) : 'plot';
+    const raw = typeof t === 'string' ? t : (t && t.text) || '';
+    return raw.replace(/<[^>]*>/g, '').trim();
   };
+  const buildName = gd => `${slug(readTitle(gd) || 'plot')}_${stamp()}`;
 
-  let _gd = null;
+  // Primary — capture-phase click sets gd._context.toImageButtonOptions.filename
+  // BEFORE Plotly's bubble-phase handler reads it.
+  document.addEventListener('click', ev => {
+    const path = ev.composedPath ? ev.composedPath() : [];
+    let isDownload = false, gd = null;
+    for (const el of path) {
+      if (!el || !el.classList) continue;
+      if (el.classList.contains('modebar-btn')) {
+        const title = (el.getAttribute('data-title') || '').toLowerCase();
+        if (title.includes('download')) isDownload = true;
+      }
+      if (el.classList.contains('js-plotly-plot')) { gd = el; break; }
+    }
+    if (isDownload && gd) {
+      const ctx = gd._context = gd._context || {};
+      const opts = ctx.toImageButtonOptions = ctx.toImageButtonOptions || {};
+      opts.filename = buildName(gd);
+    }
+  }, true);
 
-  // Track which plot's camera button was pressed (mousedown fires before Plotly's handler)
-  const trackBtn = ev => {
-    const btn = ev.target.closest &&
-      ev.target.closest('.modebar-btn[data-title*="Download plot"]');
-    if (btn) _gd = btn.closest('.js-plotly-plot') || _gd;
-  };
-  document.addEventListener('mousedown', trackBtn, true);
-  document.addEventListener('click',     trackBtn, true);
+  // Track last-touched plot for the prototype fallbacks below.
+  let _lastGd = null;
+  document.addEventListener('mousedown', ev => {
+    const path = ev.composedPath ? ev.composedPath() : [];
+    for (const el of path) {
+      if (el && el.classList && el.classList.contains('js-plotly-plot')) {
+        _lastGd = el;
+        return;
+      }
+    }
+  }, true);
 
-  const applyName = a => {
-    if (!_gd || !a.hasAttribute('download')) return;
-    const ext = (a.getAttribute('download').match(/\.\w+$/) || ['.png'])[0];
-    a.setAttribute('download', `${slug(readTitle(_gd))}_${stamp()}${ext}`);
-    _gd = null;
-  };
-
-  // Path 1 — Plotly calls a.click()
+  // Fallback 1 — rewrite `newplot.*` filenames at HTMLAnchorElement.click().
   const _origClick = HTMLAnchorElement.prototype.click;
   HTMLAnchorElement.prototype.click = function() {
-    applyName(this);
+    if (typeof this.download === 'string' && /^newplot\./i.test(this.download)) {
+      const ext = (/\.[a-z0-9]+$/i.exec(this.download) || [''])[0];
+      this.download = `${buildName(_lastGd)}${ext}`;
+    }
     return _origClick.call(this);
   };
 
-  // Path 2 — fallback: watch for <a download="..."> inserted into the DOM
-  new MutationObserver(muts => {
-    if (!_gd) return;
-    for (const m of muts)
-      for (const n of m.addedNodes)
-        if (n.nodeType === 1 && n.tagName === 'A' && n.hasAttribute('download'))
-          { applyName(n); return; }
-  }).observe(document.documentElement, { childList: true, subtree: true });
-}
+  // Fallback 2 — rewrite at the moment Plotly inserts its temporary <a>.
+  const _origAppend = Node.prototype.appendChild;
+  Node.prototype.appendChild = function(node) {
+    if (node instanceof HTMLAnchorElement && typeof node.download === 'string'
+        && /^newplot\./i.test(node.download)) {
+      const ext = (/\.[a-z0-9]+$/i.exec(node.download) || [''])[0];
+      node.download = `${buildName(_lastGd)}${ext}`;
+    }
+    return _origAppend.call(this, node);
+  };
+
+  // Visibility marker — lets us confirm the patch ran from the browser.
+  window.__plotlyDlPatchInstalled = true;
 """
+    # `js=` form: arrow function the deprecated Blocks(js=) hook awaits.
+    _LAUNCH_JS = "() => {\n" + _PATCH_BODY + "\n}"
+    # `head=` form: raw <script> tag injected directly into <head> at server
+    # render time. Wrapped in an IIFE so internal const/let don't leak.
+    _LAUNCH_HEAD = "<script>(function(){\n" + _PATCH_BODY + "\n})();</script>"
+
     demo = create_interface(theme=get_theme(), css=CUSTOM_CSS, js=_LAUNCH_JS)
     demo.queue(default_concurrency_limit=10)
     demo.launch(
@@ -290,6 +319,7 @@ def main() -> None:
         inbrowser=True,
         allowed_paths=[tempfile.gettempdir()],
         max_threads=40,
+        head=_LAUNCH_HEAD,
     )
 
 
