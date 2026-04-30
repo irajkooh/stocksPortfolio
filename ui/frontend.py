@@ -19,7 +19,7 @@ from ui.components.dashboard import (
     last_plan_rows,
     last_plan_pie,
 )
-from ui.components.chatbot import run_agents, tts_html, agent_badges_html
+from ui.components.chatbot import run_agents, tts_html, tts_text_for_js, agent_badges_html
 from ui.components.optimizer_ui import (
     run_optimize,
     sync_slider_to_text,
@@ -471,13 +471,13 @@ def remove_ticker(ticker: str, portfolio_id: int):
 def handle_chat(message, history, tts_on, portfolio_id: int = 1):
     if not message.strip():
         yield (gr.update(value="", interactive=True), history, "", "",
-               _EMPTY, _EMPTY, _EMPTY, _EMPTY, gr.update(visible=False))
+               _EMPTY, _EMPTY, _EMPTY, _EMPTY, gr.update(visible=False), "")
         return
 
     user_msg = {"role": "user", "content": message}
     pending = history + [user_msg, {"role": "assistant", "content": "⏳ Agents working…"}]
     yield (gr.update(value="⏳ Thinking…", interactive=False),
-           pending, "", "", _EMPTY, _EMPTY, _EMPTY, _EMPTY, gr.update(visible=False))
+           pending, "", "", _EMPTY, _EMPTY, _EMPTY, _EMPTY, gr.update(visible=False), "")
 
     response, charts, agents_used, status_log = run_agents(message, history, portfolio_id)
     new_history = history + [user_msg, {"role": "assistant", "content": response}]
@@ -492,6 +492,7 @@ def handle_chat(message, history, tts_on, portfolio_id: int = 1):
         new_history, badges_html, audio_html,
         _fig(0), _fig(1), _fig(2), _fig(3),
         gr.update(visible=bool(charts)),
+        tts_text_for_js(response),
     )
 
 
@@ -656,6 +657,7 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                     datatype=["str", "str", "str", "str", "str", "str", "str", "str"],
                     interactive=False,
                     elem_classes=["watchlist-df"],
+                    max_height=350,
                 )
                 gr.Markdown("### Last optimized plan")
                 with gr.Row():
@@ -672,6 +674,7 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                     datatype=["str", "str", "str", "str", "str"],
                     interactive=False,
                     elem_classes=["watchlist-df"],
+                    max_height=350,
                 )
                 d_stamp = gr.Markdown()
                 gr.Markdown(_date_range_label("Portfolio vs S&P 500"))
@@ -708,6 +711,7 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                     interactive=False,
                     elem_classes=["watchlist-df"],
                     label="",
+                    max_height=350,
                 )
 
                 # stub — kept for _switch_outs tuple compat
@@ -892,9 +896,12 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                         chat_fig2 = gr.Plot()
                         chat_fig3 = gr.Plot()
 
+                tts_source = gr.Textbox(visible=False, value="", elem_id="tts-source")
+
                 _chat_outs = [
                     msg_box, chatbot, badges_out, audio_out,
                     chat_fig0, chat_fig1, chat_fig2, chat_fig3, chart_group,
+                    tts_source,
                 ]
                 _SCROLL_JS = """() => {
     setTimeout(function () {
@@ -909,51 +916,44 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                     handle_chat, [msg_box, chatbot, tts_state, portfolio_state], _chat_outs
                 ).then(fn=None, js=_SCROLL_JS)
 
-                # TTS toggle: speak last assistant message, or clear playback in progress.
-                def _toggle_tts(is_on: bool, history: list):
+                # TTS toggle: JS fires first (synchronous with click → iOS-safe),
+                # then Python updates the button label.
+                _TTS_JS = """(text) => {
+    var synth = window.speechSynthesis;
+    if (!synth) return;
+    if (synth.speaking || synth.pending) {
+        synth.cancel();
+        return;
+    }
+    // text comes from hidden tts_source textbox via Gradio inputs
+    var src = (text || '').trim();
+    // Fallback 1: read hidden textbox from DOM
+    if (!src) {
+        var el = document.querySelector('#tts-source textarea, #tts-source input');
+        if (el) src = el.value.trim();
+    }
+    // Fallback 2: read last bot message from chatbot DOM
+    if (!src) {
+        var bots = document.querySelectorAll('.message.bot');
+        if (bots.length) src = (bots[bots.length-1].innerText || '').trim();
+    }
+    if (!src) return;
+    var u = new SpeechSynthesisUtterance(src.slice(0, 2000));
+    u.lang = 'en-US';
+    u.rate = 1.0;
+    synth.speak(u);
+}"""
+
+                def _toggle_tts_btn(is_on: bool):
                     if is_on:
-                        # Currently playing → clear the audio element to stop it.
-                        return (
-                            False,
-                            gr.update(value="🔊 Read", variant="secondary",
-                                      elem_classes="tts-btn-off"),
-                            "",
-                        )
-                    def _as_text(x) -> str:
-                        if x is None:
-                            return ""
-                        if isinstance(x, str):
-                            return x
-                        if isinstance(x, dict):
-                            return _as_text(x.get("text") or x.get("content") or "")
-                        if isinstance(x, (list, tuple)):
-                            return " ".join(_as_text(i) for i in x)
-                        return str(x)
+                        return (False, gr.update(value="🔊 Read", variant="secondary",
+                                                 elem_classes="tts-btn-off"))
+                    return (True, gr.update(value="⏹ Stop", variant="stop",
+                                            elem_classes="tts-btn-on"))
 
-                    last = ""
-                    for msg in reversed(history or []):
-                        if isinstance(msg, dict) and msg.get("role") == "assistant":
-                            last = _as_text(msg.get("content"))
-                            if last:
-                                break
-                        elif isinstance(msg, (list, tuple)) and len(msg) >= 2:
-                            last = _as_text(msg[1])
-                            if last:
-                                break
-                    if not last.strip():
-                        return (False, gr.update(), "")
-                    audio = tts_html(last, enabled=True)
-                    if not audio:
-                        return (False, gr.update(), "")
-                    return (
-                        True,
-                        gr.update(value="⏹ Stop", variant="stop",
-                                  elem_classes="tts-btn-on"),
-                        audio,
-                    )
-
-                tts_btn.click(_toggle_tts, [tts_state, chatbot],
-                              [tts_state, tts_btn, audio_out])
+                tts_btn.click(fn=None, js=_TTS_JS, inputs=[tts_source]).then(
+                    fn=_toggle_tts_btn, inputs=[tts_state], outputs=[tts_state, tts_btn]
+                )
 
                 _COPY_JS = """() => {
     const root = document.querySelector('#main-chatbot');
