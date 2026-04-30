@@ -106,12 +106,7 @@ def run_agents(
 
 
 def tts_html(text, enabled: bool = True) -> str:
-    """Synthesise *text* with gTTS, return an HTML <audio autoplay> tag.
-
-    Cross-platform (works on HF Space Linux, not just macOS). Returns "" when
-    disabled, empty, or on any failure — caller can drop straight into a
-    gr.HTML output.
-    """
+    """Synthesise *text* with gTTS, return an HTML <audio autoplay> tag."""
     if not enabled or not text:
         return ""
     if not isinstance(text, str):
@@ -119,7 +114,6 @@ def tts_html(text, enabled: bool = True) -> str:
     snippet = _strip_for_tts(text)[:2000].strip()
     if not snippet:
         return ""
-
     try:
         from gtts import gTTS
         buf = io.BytesIO()
@@ -128,12 +122,18 @@ def tts_html(text, enabled: bool = True) -> str:
     except Exception as exc:
         logger.warning("TTS synthesis failed: %s", exc)
         return ""
-
     return (
         f'<audio autoplay controls style="width:100%">'
         f'<source src="data:audio/mp3;base64,{b64}" type="audio/mp3">'
         f'</audio>'
     )
+
+
+def tts_text_for_js(text: str) -> str:
+    """Return cleaned text ready to pass to the browser Web Speech API."""
+    if not isinstance(text, str):
+        text = str(text)
+    return _strip_for_tts(text)[:2000].strip()
 
 
 def agent_badges_html(agents_used: list[str]) -> str:
