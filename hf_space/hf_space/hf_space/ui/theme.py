@@ -316,13 +316,6 @@ button.sample-q:hover, .sample-q button:hover {
 }
 .js-plotly-plot .plotly { width: 100% !important; }
 
-/* ── Watchlist dataframe: scrollable on mobile ───────── */
-.watchlist-df table { table-layout: auto !important; }
-.watchlist-df thead,
-.watchlist-df tbody { width: auto !important; }
-.watchlist-df th,
-.watchlist-df td { white-space: nowrap !important; }
-
 /* ── Watchlist dataframe: black on white ─────────────── */
 .watchlist-df,
 .watchlist-df *,
@@ -337,5 +330,4 @@ button.sample-q:hover, .sample-q button:hover {
     background-color: #fff !important;
     color: #000 !important;
 }
-
 """
