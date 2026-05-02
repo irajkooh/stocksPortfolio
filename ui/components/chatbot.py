@@ -17,7 +17,7 @@ _MD_LINK     = re.compile(r"!?\[([^\]]*)\]\([^)]*\)")
 _MD_BOLD     = re.compile(r"(\*\*|__)(.+?)\1")
 _MD_ITALIC   = re.compile(r"(?<!\w)([*_])([^*_\n]+?)\1(?!\w)")
 _MD_CODE     = re.compile(r"`+([^`]*)`+")
-_MD_HEAD     = re.compile(r"^\s{0,3}#{1,6}\s*", re.MULTILINE)
+_MD_HEAD     = re.compile(r"^\s{0,3}#{1,6}[^\n]*", re.MULTILINE)  # strip entire heading line
 _MD_QUOTE    = re.compile(r"^\s*>\s?", re.MULTILINE)
 _MD_LIST     = re.compile(r"^\s*([-*+]|\d+\.)\s+", re.MULTILINE)
 _MD_HRULE    = re.compile(r"^\s*[-*_]{3,}\s*$", re.MULTILINE)
@@ -82,7 +82,18 @@ def _strip_for_tts(text: str) -> str:
     text = _EMOJI.sub("", text)
     text = _LEFTOVER.sub("", text)
     text = _REPEAT_RUN.sub(r"\1", text)
-    return _MULTI_SPACE.sub(" ", text).strip()
+    text = _MULTI_SPACE.sub(" ", text).strip()
+    # Truncate to first sentence(s) — max 400 chars — so TTS speaks the key
+    # answer only, not verbose multi-paragraph LLM explanations.
+    if len(text) > 400:
+        cut = text[:400]
+        for m in reversed(list(re.finditer(r'[.!?]', cut))):
+            if m.start() > 60:
+                text = cut[:m.start() + 1]
+                break
+        else:
+            text = cut.rstrip() + "\u2026"
+    return text
 
 
 _AGENT_LABELS = {
