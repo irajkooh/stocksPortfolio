@@ -302,6 +302,52 @@ def main() -> None:
 
   // Visibility marker — lets us confirm the patch ran from the browser.
   window.__plotlyDlPatchInstalled = true;
+
+  // ── Mobile table scroll fix ───────────────────────────────────────────────
+  // Gradio sets width:100% on both .table-wrap and <table>, so the table never
+  // overflows and scroll does nothing.  We also need touch-action on every
+  // ancestor so the browser doesn't swallow pan gestures.
+  function _fixWatchlistScroll() {
+    document.querySelectorAll('.watchlist-df').forEach(function(wdf) {
+      wdf.style.touchAction = 'pan-x pan-y';
+      wdf.querySelectorAll('table').forEach(function(tbl) {
+        tbl.style.tableLayout = 'auto';
+        tbl.style.width = 'max-content';
+        tbl.style.minWidth = '100%';
+        tbl.style.overflow = 'visible';
+        // Direct parent of <table> is the horizontal scroll container.
+        var sc = tbl.parentElement;
+        if (sc && sc !== wdf) {
+          sc.style.overflowX = 'auto';
+          sc.style.maxWidth = '100%';
+          sc.style.webkitOverflowScrolling = 'touch';
+          sc.style.touchAction = 'pan-x pan-y';
+          sc.style.overscrollBehavior = 'contain';
+        }
+        // Propagate touch-action up through intermediate ancestors.
+        var el = sc ? sc.parentElement : null;
+        while (el && el !== wdf) {
+          el.style.touchAction = 'pan-x pan-y';
+          el = el.parentElement;
+        }
+      });
+    });
+  }
+  if (document.readyState !== 'loading') {
+    _fixWatchlistScroll();
+  } else {
+    document.addEventListener('DOMContentLoaded', _fixWatchlistScroll);
+  }
+  // Re-apply whenever Gradio re-renders table content.
+  var _wlScrollObs = new MutationObserver(function(muts) {
+    for (var i = 0; i < muts.length; i++) {
+      if (muts[i].addedNodes.length) { setTimeout(_fixWatchlistScroll, 200); break; }
+    }
+  });
+  function _startWlObs() {
+    _wlScrollObs.observe(document.body, {childList: true, subtree: true});
+  }
+  document.body ? _startWlObs() : document.addEventListener('DOMContentLoaded', _startWlObs);
 """
     # `js=` form: arrow function the deprecated Blocks(js=) hook awaits.
     _LAUNCH_JS = "() => {\n" + _PATCH_BODY + "\n}"

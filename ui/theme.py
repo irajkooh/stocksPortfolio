@@ -342,22 +342,36 @@ button.sample-q:hover, .sample-q button:hover {
 .js-plotly-plot .plotly { width: 100% !important; }
 
 /* ── Watchlist dataframe: scrollable incl. mobile ───────── */
-/* Only the inner scroll wrapper gets overflow; outer wrappers must NOT
-   become scroll containers or they create nested scroll traps. */
-.watchlist-df .overflow-y-auto,
-.watchlist-df .table-wrap,
-.watchlist-df .scroll-hide,
-.watchlist-df .tableContainer,
-.watchlist-df [data-testid="dataframe-responsive"] {
+/* touch-action: pan-x pan-y on every element so no ancestor can swallow
+   touch gestures before they reach the scroll container.               */
+.watchlist-df,
+.watchlist-df * {
+    touch-action: pan-x pan-y !important;
+}
+/* .table-wrap is Gradio 6.9's direct parent of <table> for non-interactive
+   dataframes.  Give it explicit overflow so it is the scroll container.  */
+.watchlist-df .table-wrap {
     overflow-x: auto !important;
     overflow-y: auto !important;
+    max-width: 100% !important;
     -webkit-overflow-scrolling: touch !important;
-    touch-action: pan-x pan-y !important;
     overscroll-behavior: contain !important;
 }
-.watchlist-df table { table-layout: auto !important; }
+/* Gradio sets width:100% on both .table-wrap AND <table>, which prevents any
+   horizontal overflow.  Switching the table to max-content lets it be as wide
+   as the cell content so it actually overflows the container.            */
+.watchlist-df table {
+    table-layout: auto !important;
+    width: max-content !important;
+    min-width: 100% !important;
+    overflow: visible !important;
+}
 .watchlist-df thead,
-.watchlist-df tbody { width: auto !important; }
+.watchlist-df tbody {
+    display: table !important;
+    table-layout: auto !important;
+    width: auto !important;
+}
 .watchlist-df th,
 .watchlist-df td { white-space: nowrap !important; }
 
