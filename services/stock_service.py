@@ -1,9 +1,50 @@
+import threading
 import time
 import yfinance as yf
 import pandas as pd
 
 _cache: dict = {}
 _TTL = 300  # 5-minute cache
+
+# ------------------------------------------------------------------
+# yfinance crumb guard
+# Yahoo Finance requires a session crumb negotiated on the first
+# request.  On cold starts, parallel ticker loads all fire before
+# the crumb is ready → HTTP 401 "Invalid Crumb".
+# We serialise the very first call so the crumb is settled, then
+# let subsequent calls through.  A single retry covers the rare
+# window where a parallel call still sneaks through.
+# ------------------------------------------------------------------
+_yf_lock = threading.Lock()
+_yf_ready = False
+
+
+def _ensure_yf_ready() -> None:
+    global _yf_ready
+    if _yf_ready:
+        return
+    with _yf_lock:
+        if _yf_ready:
+            return
+        try:
+            yf.Ticker("SPY").history(period="1d")
+        except Exception:
+            pass
+        _yf_ready = True
+
+
+def _yf_history(ticker: str, period: str) -> pd.DataFrame:
+    """Fetch ticker history; warm-up crumb first, retry once on 401."""
+    _ensure_yf_ready()
+    for attempt in range(2):
+        try:
+            df = yf.Ticker(ticker).history(period=period)
+            if not df.empty:
+                return df
+        except Exception:
+            if attempt == 0:
+                time.sleep(1)
+    return pd.DataFrame()
 
 
 def _cached(key: str, fn, ttl: int = _TTL):
@@ -18,10 +59,10 @@ def _cached(key: str, fn, ttl: int = _TTL):
 def get_stock_info(ticker: str) -> dict:
     def fetch():
         try:
-            t = yf.Ticker(ticker)
             # history() uses /v8/finance/chart — most reliable on shared infra
-            hist2 = t.history(period="5d")
+            hist2 = _yf_history(ticker, "5d")
             price = float(hist2["Close"].dropna().iloc[-1]) if not hist2.empty else 0.0
+            t = yf.Ticker(ticker)
             # .info is best-effort only (heavy endpoint, may time out)
             try:
                 info = t.info
@@ -56,10 +97,7 @@ def get_stock_info(ticker: str) -> dict:
 
 def get_historical(ticker: str, period: str = "1y") -> pd.DataFrame:
     def fetch():
-        try:
-            return yf.Ticker(ticker).history(period=period)
-        except Exception:
-            return pd.DataFrame()
+        return _yf_history(ticker, period)
 
     return _cached(f"hist_{ticker}_{period}", fetch)
 
@@ -69,7 +107,7 @@ def get_period_changes(ticker: str) -> dict[str, float]:
     def fetch():
         try:
             # history() is the most reliable endpoint on all infra
-            hist = yf.Ticker(ticker).history(period="1y")["Close"].dropna()
+            hist = _yf_history(ticker, "1y")["Close"].dropna()
             if hist.empty:
                 return {}
             cur = float(hist.iloc[-1])
@@ -97,7 +135,7 @@ def get_batch_prices(tickers: list[str]) -> dict[str, float]:
 
 def validate_ticker(ticker: str) -> bool:
     try:
-        hist = yf.Ticker(ticker).history(period="5d")
+        hist = _yf_history(ticker, "5d")
         return not hist.empty and float(hist["Close"].dropna().iloc[-1]) > 0
     except Exception:
         return False
