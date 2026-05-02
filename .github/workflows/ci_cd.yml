@@ -114,6 +114,7 @@ jobs:
           git config --global user.email "ci@github.com"
           git config --global user.name  "GitHub CI"
           HF_REMOTE="https://user:${HF_TOKEN}@huggingface.co/spaces/irajkoohi/stocksPortfolio"
+          rm -rf hf_space
           git clone "${HF_REMOTE}" hf_space
           rsync -av --delete \
             --exclude='.git' --exclude='.github' \

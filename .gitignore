@@ -24,3 +24,4 @@ data/models/
 *.pt
 *.zip
 .DS_Store
+hf_space/
