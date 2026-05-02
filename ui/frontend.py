@@ -311,13 +311,15 @@ def _portfolio_vs_spy_fig(portfolio_id: int, period: str = "1y") -> go.Figure:
 
     if tickers:
         import yfinance as yf
+        from services.stock_service import _session as _yf_session
         symbols = list(dict.fromkeys(tickers + ["^GSPC"]))
         try:
             _end = date.today() + timedelta(days=1)
             _start = date.today() - timedelta(days=366)
             raw = yf.download(symbols, start=str(_start), end=str(_end),
                               group_by="ticker", auto_adjust=True,
-                              threads=False, progress=False)
+                              threads=False, progress=False,
+                              session=_yf_session)
         except Exception as e:
             log.warning("vs-SPY: batched download failed: %s", e)
             raw = None
