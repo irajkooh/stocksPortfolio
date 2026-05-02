@@ -832,7 +832,7 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                 _SAMPLE_QS = [
                     "How you can help me?",
                     "what are my holdings?",
-                    "What stocks are in my watchlist?",
+                    "What are my today's Profit/Loss?",
                     "Which stock is my best performer?",
                     "Analyze my portfolio volatility",
                     "Compare my portfolio vs S&P 500",
