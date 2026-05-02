@@ -12,10 +12,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # noqa: E402
 load_dotenv(ROOT / ".env")
 
-from core.config import DB_PATH, DATA_DIR  # noqa: E402 — needs dotenv first
+from core.config import DB_PATH  # noqa: E402
 
 DATASET_REPO = os.environ.get("PERSIST_DATASET", "irajkoohi/stocksPortfolio_state")
 DB_FILENAME  = "portfolio.db"
