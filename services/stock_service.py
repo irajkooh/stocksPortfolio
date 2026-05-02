@@ -48,22 +48,21 @@ def get_historical(ticker: str, period: str = "1y") -> pd.DataFrame:
 
 
 def get_period_changes(ticker: str) -> dict[str, float]:
-    """Return 1d/1mo/3mo/1y price change % from cached 1-year history."""
+    """Return 1d/1mo/3mo/1y price change % using real-time price as current."""
     def fetch():
         try:
             hist = yf.Ticker(ticker).history(period="1y")["Close"].dropna()
             if hist.empty:
                 return {}
-            cur = hist.iloc[-1]
-            def _pct(days: int) -> float:
-                idx = max(0, len(hist) - days - 1)
-                ref = hist.iloc[idx]
-                return round((cur - ref) / ref * 100, 2) if ref else 0.0
+            stock = get_stock_info(ticker)
+            cur = float(stock.get("price") or 0) or float(hist.iloc[-1])
+            def _pct(ref_price: float) -> float:
+                return round((cur - ref_price) / ref_price * 100, 2) if ref_price else 0.0
             return {
-                "change_1d_pct":  _pct(1),
-                "change_1mo_pct": _pct(21),
-                "change_3mo_pct": _pct(63),
-                "change_1y_pct":  _pct(252),
+                "change_1d_pct":  _pct(float(hist.iloc[-1])),
+                "change_1mo_pct": _pct(float(hist.iloc[max(0, len(hist) - 22)])),
+                "change_3mo_pct": _pct(float(hist.iloc[max(0, len(hist) - 64)])),
+                "change_1y_pct":  _pct(float(hist.iloc[0])),
             }
         except Exception:
             return {}

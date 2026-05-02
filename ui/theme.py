@@ -317,6 +317,15 @@ button.sample-q:hover, .sample-q button:hover {
 .js-plotly-plot .plotly { width: 100% !important; }
 
 /* ── Watchlist dataframe: scrollable on mobile ───────── */
+.watchlist-df,
+.watchlist-df .table-wrap,
+.watchlist-df .overflow-y-auto,
+.watchlist-df [data-testid="dataframe-responsive"],
+.watchlist-df > div {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-x pan-y !important;
+}
 .watchlist-df table { table-layout: auto !important; }
 .watchlist-df thead,
 .watchlist-df tbody { width: auto !important; }

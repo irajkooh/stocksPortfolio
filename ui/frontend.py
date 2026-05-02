@@ -313,8 +313,11 @@ def _portfolio_vs_spy_fig(portfolio_id: int, period: str = "1y") -> go.Figure:
         import yfinance as yf
         symbols = list(dict.fromkeys(tickers + ["^GSPC"]))
         try:
-            raw = yf.download(symbols, period=period, group_by="ticker",
-                              auto_adjust=True, threads=False, progress=False)
+            _end = date.today() + timedelta(days=1)
+            _start = date.today() - timedelta(days=366)
+            raw = yf.download(symbols, start=str(_start), end=str(_end),
+                              group_by="ticker", auto_adjust=True,
+                              threads=False, progress=False)
         except Exception as e:
             log.warning("vs-SPY: batched download failed: %s", e)
             raw = None
@@ -382,9 +385,11 @@ def refresh_dashboard(portfolio_id: int = 1):
     watch = live_watchlist_rows(portfolio_id)
     vs_spy = _portfolio_vs_spy_fig(portfolio_id)
     rows, m = last_plan_rows(portfolio_id)
+    watch_lbl = _date_range_label("Live watchlist")
+    spy_lbl   = _date_range_label("Portfolio vs S&P 500")
     if m is None:
         return (watch, "—", "—", "—", "—", "—", "—", "—", _placeholder(420), [],
-                "_Run the Optimizer to see your plan._", vs_spy)
+                "_Run the Optimizer to see your plan._", vs_spy, watch_lbl, spy_lbl)
     sortino_s = f"{m['sortino']:.3f}" if m.get("sortino") is not None else "—"
     var_s     = f"{m['var_95']*100:.2f}%" if m.get("var_95") is not None else "—"
     return (
@@ -400,6 +405,8 @@ def refresh_dashboard(portfolio_id: int = 1):
         rows,
         f"_Last optimized: {m['created_at'].strftime('%Y-%m-%d %H:%M:%S')}_",
         vs_spy,
+        watch_lbl,
+        spy_lbl,
     )
 
 
@@ -554,6 +561,7 @@ def _switch_portfolio(choice: str):
     opt = _load_saved_optimizer(pid)
     return (
         pid, *dash, rows, dd, dd,
+        _date_range_label("Live prices"),
         [],   # chatbot: clear history
         *opt,
     )
@@ -651,7 +659,7 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
             # TAB 1 — Dashboard
             # ════════════════════════════════════════════════════════════════
             with gr.Tab("📊 Dashboard") as dash_tab:
-                gr.Markdown(_date_range_label("Live watchlist"))
+                watch_label = gr.Markdown(_date_range_label("Live watchlist"))
                 dash_watch = gr.Dataframe(
                     headers=["Ticker", "Price", "1d %", "1mo %", "3mo %", "1y %", "Sharpe (1y)", "Sortino (1y)"],
                     datatype=["str", "str", "str", "str", "str", "str", "str", "str"],
@@ -677,14 +685,15 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                     max_height=350,
                 )
                 d_stamp = gr.Markdown()
-                gr.Markdown(_date_range_label("Portfolio vs S&P 500"))
+                spy_label = gr.Markdown(_date_range_label("Portfolio vs S&P 500"))
                 dash_vs_spy = gr.Plot(label="Portfolio vs S&P 500", min_width=400, value=_placeholder(460))
                 refresh_btn = gr.Button("🔄 Refresh dashboard", variant="primary",
                                         elem_classes="btn-glow")
 
                 _dash_outs = [dash_watch, d_budget, d_ret, d_vol, d_shrp,
                               d_sortino, d_var, d_cash,
-                              dash_pie, dash_table, d_stamp, dash_vs_spy]
+                              dash_pie, dash_table, d_stamp, dash_vs_spy,
+                              watch_label, spy_label]
                 refresh_btn.click(refresh_dashboard, [portfolio_state], _dash_outs)
                 demo.load(refresh_dashboard, [portfolio_state], _dash_outs)
 
@@ -704,7 +713,7 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                         remove_btn    = gr.Button("Remove", variant="stop")
                         remove_status = gr.Markdown()
 
-                gr.Markdown(_date_range_label("Live prices"))
+                prices_label = gr.Markdown(_date_range_label("Live prices"))
                 watchlist_df = gr.Dataframe(
                     headers=["Ticker", "Price", "1d %", "1mo %", "3mo %", "1y %"],
                     datatype=["str", "str", "str", "str", "str", "str"],
@@ -732,12 +741,12 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                     rows = _watchlist_df(pid)
                     tickers_for_dropdown = [r[0] for r in rows if r[0] != "CASH"]
                     dd = gr.update(choices=tickers_for_dropdown, value=None)
-                    return rows, dd
+                    return rows, dd, _date_range_label("Live prices")
 
                 demo.load(
                     _init_watchlist,
                     [portfolio_state],
-                    [watchlist_df, remove_dd],
+                    [watchlist_df, remove_dd, prices_label],
                 )
 
             # ════════════════════════════════════════════════════════════════
@@ -876,7 +885,7 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                     tts_state = gr.State(False)
                     tts_btn   = gr.Button(
                         "🔊 Read", variant="secondary", scale=1,
-                        elem_classes="tts-btn-off",
+                        elem_classes="tts-btn-off", elem_id="tts-btn",
                     )
                     copy_btn  = gr.Button(
                         "📋 Copy Chat", variant="secondary", scale=1,
@@ -896,7 +905,8 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                         chat_fig2 = gr.Plot()
                         chat_fig3 = gr.Plot()
 
-                tts_source = gr.Textbox(visible=False, value="", elem_id="tts-source")
+                tts_source    = gr.Textbox(visible=False, value="", elem_id="tts-source")
+                tts_reset_btn = gr.Button(visible=False, elem_id="tts-reset-trigger")
 
                 _chat_outs = [
                     msg_box, chatbot, badges_out, audio_out,
@@ -918,42 +928,59 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
 
                 # TTS toggle: JS fires first (synchronous with click → iOS-safe),
                 # then Python updates the button label.
-                _TTS_JS = """(text) => {
+                # JS pre-hook: runs sync on click (keeps user-gesture for speech API),
+                # passes inputs through unchanged so Python sees the current state.
+                _TTS_JS = """(is_on, text) => {
     var synth = window.speechSynthesis;
-    if (!synth) return;
+    if (!synth) return [is_on, text];
     if (synth.speaking || synth.pending) {
         synth.cancel();
-        return;
+        return [is_on, text];
     }
-    // text comes from hidden tts_source textbox via Gradio inputs
     var src = (text || '').trim();
-    // Fallback 1: read hidden textbox from DOM
     if (!src) {
         var el = document.querySelector('#tts-source textarea, #tts-source input');
         if (el) src = el.value.trim();
     }
-    // Fallback 2: read last bot message from chatbot DOM
     if (!src) {
         var bots = document.querySelectorAll('.message.bot');
-        if (bots.length) src = (bots[bots.length-1].innerText || '').trim();
+        if (bots.length) {
+            var clone = bots[bots.length-1].cloneNode(true);
+            clone.querySelectorAll('button').forEach(function(b) { b.remove(); });
+            src = (clone.innerText || '').trim();
+        }
     }
-    if (!src) return;
+    if (!src) return [is_on, text];
     var u = new SpeechSynthesisUtterance(src.slice(0, 2000));
     u.lang = 'en-US';
     u.rate = 1.0;
+    u.onend = function() {
+        var rb = document.querySelector('#tts-reset-trigger button');
+        if (rb) rb.click();
+    };
+    u.onerror = function() {
+        var rb = document.querySelector('#tts-reset-trigger button');
+        if (rb) rb.click();
+    };
     synth.speak(u);
+    return [is_on, text];
 }"""
 
-                def _toggle_tts_btn(is_on: bool):
+                def _toggle_tts_btn(is_on: bool, _text: str = ""):
                     if is_on:
-                        return (False, gr.update(value="🔊 Read", variant="secondary",
-                                                 elem_classes="tts-btn-off"))
-                    return (True, gr.update(value="⏹ Stop", variant="stop",
-                                            elem_classes="tts-btn-on"))
+                        return False, gr.update(value="🔊 Read", elem_classes="tts-btn-off")
+                    return True, gr.update(value="⏹ Stop", elem_classes="tts-btn-on")
 
-                tts_btn.click(fn=None, js=_TTS_JS, inputs=[tts_source]).then(
-                    fn=_toggle_tts_btn, inputs=[tts_state], outputs=[tts_state, tts_btn]
+                def _reset_tts():
+                    return False, gr.update(value="🔊 Read", elem_classes="tts-btn-off")
+
+                tts_btn.click(
+                    fn=_toggle_tts_btn,
+                    inputs=[tts_state, tts_source],
+                    outputs=[tts_state, tts_btn],
+                    js=_TTS_JS,
                 )
+                tts_reset_btn.click(fn=_reset_tts, outputs=[tts_state, tts_btn])
 
                 _COPY_JS = """() => {
     const root = document.querySelector('#main-chatbot');
@@ -993,7 +1020,7 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
 
         # ── Portfolio selector — wire events after all components defined ─────
         _switch_outs = (
-            [portfolio_state] + _dash_outs + [watchlist_df, remove_dd, edit_dd]
+            [portfolio_state] + _dash_outs + [watchlist_df, remove_dd, edit_dd, prices_label]
             + [chatbot]
             + [opt_status, m_ret, m_vol, m_shrp,
                m_sortino, m_var, m_cash,
