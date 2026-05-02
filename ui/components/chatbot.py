@@ -22,6 +22,7 @@ _MD_QUOTE    = re.compile(r"^\s*>\s?", re.MULTILINE)
 _MD_LIST     = re.compile(r"^\s*([-*+]|\d+\.)\s+", re.MULTILINE)
 _MD_HRULE    = re.compile(r"^\s*[-*_]{3,}\s*$", re.MULTILINE)
 _MD_TABLESEP = re.compile(r"^\s*\|?\s*:?-+:?(\s*\|\s*:?-+:?)+\s*\|?\s*$", re.MULTILINE)
+_MD_TABLEROW = re.compile(r"^\s*\|[^\n]*$", re.MULTILINE)  # any line starting with |
 _PIPE        = re.compile(r"\|")
 _EMOJI       = re.compile(
     "["
@@ -78,6 +79,7 @@ def _strip_for_tts(text: str) -> str:
     text = _MD_LIST.sub("", text)
     text = _MD_HRULE.sub("", text)
     text = _MD_TABLESEP.sub("", text)
+    text = _MD_TABLEROW.sub("", text)  # strip table data rows before pipe replacement
     text = _PIPE.sub(" ", text)
     text = _EMOJI.sub("", text)
     text = _LEFTOVER.sub("", text)
