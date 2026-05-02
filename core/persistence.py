@@ -67,8 +67,12 @@ def _push_now() -> None:
 
 
 def schedule_db_push() -> None:
-    """Debounced push: rapid commits coalesce into one upload PUSH_DEBOUNCE_SEC later."""
-    if not IS_HF_SPACE:
+    """Debounced push: rapid commits coalesce into one upload PUSH_DEBOUNCE_SEC later.
+
+    Runs on Space AND locally when HF_TOKEN is set, so local optimizer runs
+    automatically sync to the dataset without a manual push_db.py call.
+    """
+    if not IS_HF_SPACE and not _token():
         return
     global _push_timer
     with _push_lock:
