@@ -18,18 +18,25 @@ def _cached(key: str, fn, ttl: int = _TTL):
 def get_stock_info(ticker: str) -> dict:
     def fetch():
         try:
-            info = yf.Ticker(ticker).info
+            t = yf.Ticker(ticker)
+            fi = t.fast_info          # light endpoint — never times out on shared infra
+            price = float(fi.last_price or 0.0)
+            # .info is heavier; fetch separately, fall back gracefully
+            try:
+                info = t.info
+            except Exception:
+                info = {}
             return {
                 "ticker":     ticker,
                 "name":       info.get("longName") or info.get("shortName", ticker),
-                "price":      info.get("currentPrice") or info.get("regularMarketPrice", 0.0),
+                "price":      price or float(info.get("currentPrice") or info.get("regularMarketPrice") or 0.0),
                 "change_pct": info.get("regularMarketChangePercent", 0.0),
                 "sector":     info.get("sector", "Unknown"),
                 "market_cap": info.get("marketCap", 0),
                 "pe_ratio":   info.get("trailingPE"),
-                "week52_high": info.get("fiftyTwoWeekHigh"),
-                "week52_low":  info.get("fiftyTwoWeekLow"),
-                "currency":   info.get("currency", "USD"),
+                "week52_high": fi.year_high or info.get("fiftyTwoWeekHigh"),
+                "week52_low":  fi.year_low  or info.get("fiftyTwoWeekLow"),
+                "currency":   fi.currency  or info.get("currency", "USD"),
             }
         except Exception as e:
             return {"ticker": ticker, "name": ticker, "price": 0.0, "error": str(e)}
@@ -51,18 +58,38 @@ def get_period_changes(ticker: str) -> dict[str, float]:
     """Return 1d/1mo/3mo/1y price change % using real-time price as current."""
     def fetch():
         try:
-            hist = yf.Ticker(ticker).history(period="1y")["Close"].dropna()
-            if hist.empty:
+            t = yf.Ticker(ticker)
+            fi = t.fast_info
+            cur = float(fi.last_price or 0.0)
+            # previous_close from fast_info is the most reliable 1d reference
+            prev_close = float(
+                fi.regular_market_previous_close
+                or fi.previous_close
+                or 0.0
+            )
+
+            hist = t.history(period="1y")["Close"].dropna()
+            if not cur:
+                cur = float(hist.iloc[-1]) if not hist.empty else 0.0
+            if not cur:
                 return {}
-            stock = get_stock_info(ticker)
-            cur = float(stock.get("price") or 0) or float(hist.iloc[-1])
+
             def _pct(ref_price: float) -> float:
                 return round((cur - ref_price) / ref_price * 100, 2) if ref_price else 0.0
+
+            # 1d: prefer fast_info prev-close; fall back to hist[-2]
+            if prev_close:
+                change_1d = _pct(prev_close)
+            elif len(hist) >= 2:
+                change_1d = _pct(float(hist.iloc[-2]))
+            else:
+                change_1d = 0.0
+
             return {
-                "change_1d_pct":  _pct(float(hist.iloc[-2])) if len(hist) >= 2 else 0.0,
-                "change_1mo_pct": _pct(float(hist.iloc[max(0, len(hist) - 22)])),
-                "change_3mo_pct": _pct(float(hist.iloc[max(0, len(hist) - 64)])),
-                "change_1y_pct":  _pct(float(hist.iloc[0])),
+                "change_1d_pct":  change_1d,
+                "change_1mo_pct": _pct(float(hist.iloc[max(0, len(hist) - 22)])) if not hist.empty else 0.0,
+                "change_3mo_pct": _pct(float(hist.iloc[max(0, len(hist) - 64)])) if not hist.empty else 0.0,
+                "change_1y_pct":  _pct(float(hist.iloc[0]))                       if not hist.empty else 0.0,
             }
         except Exception:
             return {}
@@ -76,7 +103,7 @@ def get_batch_prices(tickers: list[str]) -> dict[str, float]:
 
 def validate_ticker(ticker: str) -> bool:
     try:
-        info = yf.Ticker(ticker).info
-        return bool(info.get("symbol") or info.get("shortName"))
+        fi = yf.Ticker(ticker).fast_info
+        return bool(fi.last_price and fi.last_price > 0)
     except Exception:
         return False
