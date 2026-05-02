@@ -15,6 +15,7 @@ _HTML_ENTITY  = re.compile(r"&(?:#\d+|#x[0-9a-fA-F]+|[a-zA-Z]+);")
 _MD_FENCE    = re.compile(r"```.*?```", re.DOTALL)
 _MD_LINK     = re.compile(r"!?\[([^\]]*)\]\([^)]*\)")
 _MD_BOLD     = re.compile(r"(\*\*|__)(.+?)\1")
+_MD_BOLD_LINE = re.compile(r"^\s*(?:\*\*|__)[^\n]+?(?:\*\*|__)\s*:?\s*$", re.MULTILINE)  # whole-line bold headings
 _MD_ITALIC   = re.compile(r"(?<!\w)([*_])([^*_\n]+?)\1(?!\w)")
 _MD_CODE     = re.compile(r"`+([^`]*)`+")
 _MD_HEAD     = re.compile(r"^\s{0,3}#{1,6}[^\n]*", re.MULTILINE)  # strip entire heading line
@@ -73,6 +74,7 @@ def _strip_for_tts(text: str) -> str:
     text = _MD_FENCE.sub(" ", text)
     text = _MD_SETEXT.sub("", text)   # setext headings before ATX (avoids === reaching _LEFTOVER)
     text = _MD_LINK.sub(r"\1", text)
+    text = _MD_BOLD_LINE.sub("", text)  # whole-line bold headings (e.g. Ollama output)
     text = _MD_BOLD.sub(r"\2", text)
     text = _MD_ITALIC.sub(r"\2", text)
     text = _MD_CODE.sub(r"\1", text)
