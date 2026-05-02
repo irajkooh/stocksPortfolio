@@ -39,9 +39,31 @@ _LEFTOVER    = re.compile(r"[*_`#>|~]")
 _REPEAT_RUN  = re.compile(r"([A-Za-z0-9])\1{3,}")
 _MULTI_SPACE = re.compile(r"\s+")
 
+# Financial abbreviation expansion — applied BEFORE TTS so the speech engine
+# reads natural words instead of spelling out letters or mispronouncing.
+_BARE_AMP = re.compile(r"(?<![&a-zA-Z])&(?![a-zA-Z#\d])")
+_ABBREV_SUB: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"\bP&L\b"),                   "profit and loss"),
+    (re.compile(r"\bPnL\b", re.IGNORECASE),    "profit and loss"),
+    (re.compile(r"\bCVaR\b", re.IGNORECASE),   "conditional value at risk"),
+    (re.compile(r"\bCVAR\b"),                  "conditional value at risk"),
+    (re.compile(r"\bVaR\b"),                   "value at risk"),
+    (re.compile(r"\bVAR\b"),                   "value at risk"),
+    (re.compile(r"\bHHI\b"),                   "H H I"),
+    (re.compile(r"\bPct\b", re.IGNORECASE),    "percent"),
+    (re.compile(r"\bEPS\b"),                   "earnings per share"),
+    (re.compile(r"\bETF\b"),                   "E T F"),
+    (re.compile(r"\bRL\b"),                    "reinforcement learning"),
+]
+
 
 def _strip_for_tts(text: str) -> str:
-    """Strip markdown formatting + emojis so TTS reads natural prose only."""
+    """Strip markdown + emojis and expand financial abbreviations for natural TTS."""
+    # 1. Expand financial abbreviations first (before any stripping removes context)
+    text = _BARE_AMP.sub(" and ", text)
+    for pat, repl in _ABBREV_SUB:
+        text = pat.sub(repl, text)
+    # 2. Strip HTML and markdown
     text = _HTML_COMMENT.sub(" ", text)
     text = _HTML_BLOCK.sub(" ", text)
     text = _HTML_TAG.sub(" ", text)

@@ -42,7 +42,7 @@ def live_watchlist_rows(portfolio_id: int) -> list[list]:
         periods = get_period_changes(t) or {}
         price   = float(info.get("price") or 0.0)
         sharpe, sortino = _stock_ratios(returns_map.get(t, np.array([])))
-        change_1d = float(info.get("change_pct") or periods.get("change_1d_pct") or 0.0)
+        change_1d = float(periods.get("change_1d_pct") or 0.0)
         stock_rows.append([
             t, f"${price:.2f}",
             f"{change_1d:+.2f}%",

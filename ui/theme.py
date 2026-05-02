@@ -116,13 +116,38 @@ button:active {
 .message.user   { background: #1F2937 !important; border: 1px solid #374151; }
 .message.bot    { background: #0d1929 !important; border: 1px solid #1F2937; }
 
-/* ── Chatbot response headings — keep small, never H1/H2 size ── */
-.message.bot h1, .message.bot h2, .message.bot h3,
-.message.bot h4, .message.bot h5, .message.bot h6 {
-    font-size: 0.95rem !important;
+/* ── Chatbot response headings ────────────────────────────── */
+.message.bot h1, .message.bot h2 {
+    font-size: 1.05rem !important;
+    font-weight: 700 !important;
+    margin: 0.9em 0 0.3em !important;
+    color: #00D4FF !important;
+    border-left: 3px solid #00D4FF !important;
+    padding-left: 8px !important;
+    letter-spacing: 0.02em !important;
+    font-family: 'Inter', ui-sans-serif, sans-serif !important;
+}
+.message.bot h3, .message.bot h4 {
+    font-size: 0.98rem !important;
+    font-weight: 700 !important;
+    margin: 0.75em 0 0.25em !important;
+    color: #A78BFA !important;
+    border-left: 2px solid #7B2FBE !important;
+    padding-left: 6px !important;
+    letter-spacing: 0.01em !important;
+    font-family: 'Inter', ui-sans-serif, sans-serif !important;
+}
+.message.bot h5, .message.bot h6 {
+    font-size: 0.92rem !important;
     font-weight: 600 !important;
     margin: 0.6em 0 0.2em !important;
-    color: #93C5FD !important;
+    color: #6EE7B7 !important;
+    font-family: 'Inter', ui-sans-serif, sans-serif !important;
+}
+/* Bold used as inline section title inside bot messages */
+.message.bot strong, .message.bot b {
+    color: #E2E8F0 !important;
+    font-weight: 700 !important;
 }
 
 /* ── Dataframe ───────────────────────────────────────────── */
@@ -316,15 +341,19 @@ button.sample-q:hover, .sample-q button:hover {
 }
 .js-plotly-plot .plotly { width: 100% !important; }
 
-/* ── Watchlist dataframe: scrollable on mobile ───────── */
-.watchlist-df,
-.watchlist-df .table-wrap,
+/* ── Watchlist dataframe: scrollable incl. mobile ───────── */
+/* Only the inner scroll wrapper gets overflow; outer wrappers must NOT
+   become scroll containers or they create nested scroll traps. */
 .watchlist-df .overflow-y-auto,
-.watchlist-df [data-testid="dataframe-responsive"],
-.watchlist-df > div {
+.watchlist-df .table-wrap,
+.watchlist-df .scroll-hide,
+.watchlist-df .tableContainer,
+.watchlist-df [data-testid="dataframe-responsive"] {
     overflow-x: auto !important;
+    overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
     touch-action: pan-x pan-y !important;
+    overscroll-behavior: contain !important;
 }
 .watchlist-df table { table-layout: auto !important; }
 .watchlist-df thead,

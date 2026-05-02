@@ -9,10 +9,6 @@ from pydantic import ValidationError
 
 from core.database import SessionLocal, init_db
 from core.models import HoldingCreate, HoldingDB, PortfolioDB
-from services.stock_service import (
-    get_stock_info,
-    get_period_changes,
-)
 from services.llm_service import llm_display_name
 from ui.components.dashboard import (
     live_watchlist_rows,
@@ -222,29 +218,15 @@ def rename_portfolio(portfolio_id: int, new_name: str):
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
 def _watchlist_df(portfolio_id: int) -> list[list]:
-    """Return rows for the watchlist dataframe; CASH pinned at top."""
-    with SessionLocal() as s:
-        tickers = [h.ticker for h in
-                   s.query(HoldingDB).filter_by(portfolio_id=portfolio_id).all()]
+    """Return rows for the watchlist dataframe; CASH pinned at top.
 
-    rows: list[list] = [["CASH", "$1.00", "+0.00%", "+0.00%", "+0.00%", "+0.00%"]]
-    for t in sorted(set(tickers)):
-        try:
-            info    = get_stock_info(t) or {}
-            periods = get_period_changes(t) or {}
-            price   = float(info.get("price") or 0.0)
-            rows.append([
-                t,
-                f"${price:.2f}",
-                f"{periods.get('change_1d_pct',  0.0):+.2f}%",
-                f"{periods.get('change_1mo_pct', 0.0):+.2f}%",
-                f"{periods.get('change_3mo_pct', 0.0):+.2f}%",
-                f"{periods.get('change_1y_pct',  0.0):+.2f}%",
-            ])
-        except Exception as e:
-            log.warning("watchlist price lookup failed for %s: %s", t, e)
-            rows.append([t, "—", "—", "—", "—", "—"])
-    return rows
+    Delegates to live_watchlist_rows so both the Portfolio tab and the
+    Dashboard tab always display identical price / change values.
+    Portfolio summary rows (eq-wt, optimized) are excluded; Sharpe /
+    Sortino columns are dropped so the 6-column table stays consistent.
+    """
+    full_rows = live_watchlist_rows(portfolio_id)
+    return [r[:6] for r in full_rows if not str(r[0]).startswith("Portfolio")]
 
 
 def _portfolio_tickers_str(portfolio_id: int = 1) -> str:
@@ -311,15 +293,13 @@ def _portfolio_vs_spy_fig(portfolio_id: int, period: str = "1y") -> go.Figure:
 
     if tickers:
         import yfinance as yf
-        from services.stock_service import _session as _yf_session
         symbols = list(dict.fromkeys(tickers + ["^GSPC"]))
         try:
             _end = date.today() + timedelta(days=1)
             _start = date.today() - timedelta(days=366)
             raw = yf.download(symbols, start=str(_start), end=str(_end),
                               group_by="ticker", auto_adjust=True,
-                              threads=False, progress=False,
-                              session=_yf_session)
+                              threads=False, progress=False)
         except Exception as e:
             log.warning("vs-SPY: batched download failed: %s", e)
             raw = None
