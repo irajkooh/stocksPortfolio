@@ -17,7 +17,7 @@ load_dotenv(ROOT / ".env")
 
 from core.config import DB_PATH  # noqa: E402
 
-DATASET_REPO = os.environ.get("PERSIST_DATASET", "irajkoohi/stocksPortfolio_state")
+DATASET_REPO = os.environ.get("PERSIST_DATASET", "irajkoohi/stocksPortfolio_dataset")
 DB_FILENAME  = "portfolio.db"
 
 

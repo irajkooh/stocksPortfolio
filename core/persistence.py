@@ -14,7 +14,7 @@ from core.config import DB_PATH, IS_HF_SPACE
 
 log = logging.getLogger(__name__)
 
-DATASET_REPO       = os.environ.get("PERSIST_DATASET", "irajkoohi/stocksPortfolio_state")
+DATASET_REPO       = os.environ.get("PERSIST_DATASET", "irajkoohi/stocksPortfolio_dataset")
 PUSH_DEBOUNCE_SEC  = 10.0
 DB_FILENAME        = "portfolio.db"
 
