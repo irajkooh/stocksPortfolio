@@ -68,27 +68,12 @@ def live_watchlist_rows(portfolio_id: int) -> list[list]:
     with _SL() as s:
         alloc_row = s.get(_ADB, portfolio_id)
 
-    if alloc_row and returns_map:
-        allocs  = json.loads(alloc_row.allocations_json)
-        total_w = sum(v["weight"] for v in allocs.values())
-        if total_w > 0:
-            common = [t for t in allocs if t in returns_map]
-            if common:
-                min_len = min(len(returns_map[t]) for t in common)
-                w       = np.array([allocs[t]["weight"] / total_w for t in common])
-                w      /= w.sum()
-                stacked = np.column_stack([returns_map[t][-min_len:] for t in common])
-                opt_r   = stacked @ w
-                _, o_sortino = _stock_ratios(opt_r)
-                # Use the Sharpe saved by the optimizer (same formula/inputs as the
-                # "Last optimized plan" metric box) so both displays agree.
-                o_sharpe = alloc_row.sharpe
-                opt_row = ["Portfolio (optimized)", "—", "—", "—", "—", "—",
-                           f"{o_sharpe:.2f}", f"{o_sortino:.2f}"]
-            else:
-                opt_row = None
-        else:
-            opt_row = None
+    if alloc_row:
+        # Use both Sharpe and Sortino as stored by the optimizer for consistency
+        o_sharpe = alloc_row.sharpe
+        o_sortino = alloc_row.sortino
+        opt_row = ["Portfolio (optimized)", "—", "—", "—", "—", "—",
+                   f"{o_sharpe:.2f}", f"{o_sortino:.2f}"]
     else:
         opt_row = None
 
