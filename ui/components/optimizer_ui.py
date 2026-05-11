@@ -63,11 +63,11 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
         rf = parse_rf(rf_text)
     except Exception as e:
         out = (f"❌ {e}", "", "", "", "", "", "", None, None, None, "") + (None,) + _DASH_EMPTY
-        # Pad to 25 outputs
-        return out + ("",) * (25 - len(out))
+        result = out + ("",) * (25 - len(out))
+        return result[:25]
 
     try:
-        result = optimize_portfolio(
+        result_obj = optimize_portfolio(
             tickers=tickers,
             budget=float(budget),
             target_vol=float(target_vol_pct) / 100.0,
@@ -77,19 +77,20 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
         )
     except Exception as e:
         out = (f"❌ {e}", "", "", "", "", "", "", None, None, None, "") + (None,) + _DASH_EMPTY
-        return out + ("",) * (25 - len(out))
+        result = out + ("",) * (25 - len(out))
+        return result[:25]
 
-    fig_p, fig_b, fig_f = build_plots(result)
+    fig_p, fig_b, fig_f = build_plots(result_obj)
     save_allocation(
         portfolio_id,
-        result,
+        result_obj,
         budget=float(budget),
         target_vol=float(target_vol_pct) / 100.0,
         lookback=lookback,
     )
 
-    m = result["metrics"]
-    commentary = "\n\n".join([f"- {w}" for w in result["warnings"]]) or "Optimization complete."
+    m = result_obj["metrics"]
+    commentary = "\n\n".join([f"- {w}" for w in result_obj["warnings"]]) or "Optimization complete."
 
     sortino_s = f"{m['sortino']:.3f}" if m.get("sortino") is not None else "—"
     var_s     = f"{m['var_95']*100:.2f}%" if m.get("var_95") is not None else "—"
@@ -100,9 +101,10 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
         f"{m['sharpe']:.3f}",
         sortino_s,
         var_s,
-        f"${result['cash_dollars']:,.0f}",
+        f"${result_obj['cash_dollars']:,.0f}",
         fig_p, fig_b, fig_f,
         commentary,
     ) + _dash_outputs()
-    # Pad to 25 outputs
-    return out + ("",) * (25 - len(out))
+    # Final safeguard: always return exactly 25 outputs
+    result = out + ("",) * (25 - len(out))
+    return result[:25]
