@@ -62,7 +62,9 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
     try:
         rf = parse_rf(rf_text)
     except Exception as e:
-        return (f"❌ {e}", "", "", "", "", "", "", None, None, None, "") + (None,) + _DASH_EMPTY
+        out = (f"❌ {e}", "", "", "", "", "", "", None, None, None, "") + (None,) + _DASH_EMPTY
+        # Pad to 25 outputs
+        return out + ("",) * (25 - len(out))
 
     try:
         result = optimize_portfolio(
@@ -74,7 +76,8 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
             frontier_samples=int(frontier_samples),
         )
     except Exception as e:
-        return (f"❌ {e}", "", "", "", "", "", "", None, None, None, "") + (None,) + _DASH_EMPTY
+        out = (f"❌ {e}", "", "", "", "", "", "", None, None, None, "") + (None,) + _DASH_EMPTY
+        return out + ("",) * (25 - len(out))
 
     fig_p, fig_b, fig_f = build_plots(result)
     save_allocation(
@@ -86,12 +89,11 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
     )
 
     m = result["metrics"]
-    commentary = "\n\n".join([f"- {w}" for w in result["warnings"]]) or \
-                 "Optimization complete."
+    commentary = "\n\n".join([f"- {w}" for w in result["warnings"]]) or "Optimization complete."
 
     sortino_s = f"{m['sortino']:.3f}" if m.get("sortino") is not None else "—"
     var_s     = f"{m['var_95']*100:.2f}%" if m.get("var_95") is not None else "—"
-    return (
+    out = (
         "✅ Optimized",
         f"{m['expected_return']*100:.2f}%",
         f"{m['expected_vol']*100:.2f}%",
@@ -102,3 +104,5 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
         fig_p, fig_b, fig_f,
         commentary,
     ) + _dash_outputs()
+    # Pad to 25 outputs
+    return out + ("",) * (25 - len(out))
