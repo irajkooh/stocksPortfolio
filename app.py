@@ -302,6 +302,37 @@ def main() -> None:
 
   // Visibility marker — lets us confirm the patch ran from the browser.
   window.__plotlyDlPatchInstalled = true;
+
+  // ── Mobile touch-scroll for watchlist/allocation tables ──────────────────
+  // CSS touch-action alone is blocked by iOS Safari parent gesture interception.
+  // Explicitly intercepting touchmove with preventDefault() is the reliable fix.
+  (function() {
+    function patchVP(vp) {
+      if (vp._mts) return;   // already patched
+      vp._mts = true;
+      var sx, sy, sl;
+      vp.addEventListener('touchstart', function(e) {
+        sx = e.touches[0].clientX;
+        sy = e.touches[0].clientY;
+        sl = vp.scrollLeft;
+      }, { passive: true });
+      vp.addEventListener('touchmove', function(e) {
+        if (!e.touches[0]) return;
+        var dx = sx - e.touches[0].clientX;
+        var dy = sy - e.touches[0].clientY;
+        if (Math.abs(dx) > Math.abs(dy)) {
+          e.preventDefault();      // stop page scroll
+          vp.scrollLeft = sl + dx; // manually scroll the table
+        }
+      }, { passive: false });
+    }
+    function scan() {
+      document.querySelectorAll('.watchlist-df .virtual-table-viewport').forEach(patchVP);
+    }
+    var obs = new MutationObserver(scan);
+    obs.observe(document.body, { childList: true, subtree: true });
+    [200, 800, 2000].forEach(function(d) { setTimeout(scan, d); });
+  })();
 """
     # `js=` form: arrow function the deprecated Blocks(js=) hook awaits.
     _LAUNCH_JS = "() => {\n" + _PATCH_BODY + "\n}"

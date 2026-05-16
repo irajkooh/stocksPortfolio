@@ -349,6 +349,7 @@ button.sample-q:hover, .sample-q button:hover {
  * of letting the element scroll. overscroll-behavior:contain stops chaining.
  */
 .watchlist-df .virtual-table-viewport {
+    overflow-x: auto !important;
     touch-action: pan-x pan-y !important;
     overscroll-behavior: contain !important;
     -webkit-overflow-scrolling: touch !important;
