@@ -357,8 +357,17 @@ button.sample-q:hover, .sample-q button:hover {
     color: #000 !important;
 }
 
-/* ── Watchlist dataframe: horizontal scroll on mobile ─── */
-/* Force table to natural content width (JS sets overflow on direct parent) */
+/* ── Watchlist dataframe: .watchlist-df owns both scroll axes ─── */
+/* JS neutralises overflow on intermediate elements (table-wrap etc.)  */
+/* so that .watchlist-df becomes the sole scroll container.            */
+.watchlist-df {
+    overflow-x: auto !important;
+    overflow-y: auto !important;
+    max-height: 380px !important;
+    -webkit-overflow-scrolling: touch !important;
+}
+
+/* Force table to its natural content width so it overflows .watchlist-df */
 .watchlist-df table {
     width: max-content !important;
     min-width: 100% !important;

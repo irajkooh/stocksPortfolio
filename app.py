@@ -303,23 +303,33 @@ def main() -> None:
   // Visibility marker — lets us confirm the patch ran from the browser.
   window.__plotlyDlPatchInstalled = true;
 
-  // ── Watchlist table: make direct parent the scroll container ─────────────
-  // CSS overflow-x on any ancestor above <table> is intercepted by Gradio's
-  // intermediate overflow:hidden divs and causes "only first column" clipping.
-  // The only safe target is table.parentElement (no intermediaries).
-  // MutationObserver re-applies after each Gradio re-render.
+  // ── Watchlist table: lift scroll context to .watchlist-df ───────────────
+  // Setting overflow-x: visible on a single longhand fails when the element
+  // already has overflow-y: auto (CSS spec converts it back to auto).
+  // Fix: set the SHORTHAND el.style.overflow = 'visible' which assigns both
+  // axes simultaneously — the spec only converts when the OTHER axis is
+  // already non-visible, which doesn't apply when we set them together.
+  // We then remove max-height on every intermediate node and let .watchlist-df
+  // own both scroll axes and the 380 px height cap.
   (function() {
     function fixTables() {
       document.querySelectorAll('.watchlist-df table').forEach(function(tbl) {
-        // Inline style overrides any CSS, including !important rules.
         tbl.style.width = 'max-content';
         tbl.style.minWidth = '100%';
-        var p = tbl.parentElement;
-        if (!p || p.dataset.mscroll) return;
-        p.dataset.mscroll = '1';
-        p.style.overflowX = 'auto';
-        p.style.webkitOverflowScrolling = 'touch';
-        p.style.overscrollBehaviorX = 'contain';
+        // Neutralise every element between <table> and .watchlist-df
+        var el = tbl.parentElement;
+        while (el && !el.classList.contains('watchlist-df')) {
+          el.style.overflow  = 'visible';   // shorthand — sets x AND y at once
+          el.style.maxHeight = 'none';
+          el = el.parentElement;
+        }
+      });
+      // .watchlist-df becomes the sole scroll container
+      document.querySelectorAll('.watchlist-df').forEach(function(wl) {
+        wl.style.overflowX = 'auto';
+        wl.style.overflowY = 'auto';
+        wl.style.maxHeight = '380px';
+        wl.style.webkitOverflowScrolling = 'touch';
       });
     }
 
@@ -348,6 +358,11 @@ def main() -> None:
     }
 
     function findOverflow(block) {
+      // .watchlist-df is now our scroll container — check it first
+      if (block.scrollWidth > block.clientWidth + 2) {
+        var bx = window.getComputedStyle(block).overflowX;
+        if (bx === 'scroll' || bx === 'auto') return block;
+      }
       var els = block.querySelectorAll('*');
       var best = null;
       for (var i = 0; i < els.length; i++) {
