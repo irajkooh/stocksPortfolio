@@ -303,11 +303,38 @@ def main() -> None:
   // Visibility marker — lets us confirm the patch ran from the browser.
   window.__plotlyDlPatchInstalled = true;
 
-  // ── Mobile touch-scroll for watchlist/allocation tables ──────────────────
-  // Document-level handler: walks from the touch target up to the nearest
-  // .watchlist-df block, then scans its children for whichever div actually
-  // has horizontal overflow — no hard-coded Gradio class names required.
-  // preventDefault() on touchmove overrides iOS Safari's page-scroll capture.
+  // ── Watchlist table: make direct parent the scroll container ─────────────
+  // CSS overflow-x on any ancestor above <table> is intercepted by Gradio's
+  // intermediate overflow:hidden divs and causes "only first column" clipping.
+  // The only safe target is table.parentElement (no intermediaries).
+  // MutationObserver re-applies after each Gradio re-render.
+  (function() {
+    function fixTables() {
+      document.querySelectorAll('.watchlist-df table').forEach(function(tbl) {
+        // Inline style overrides any CSS, including !important rules.
+        tbl.style.width = 'max-content';
+        tbl.style.minWidth = '100%';
+        var p = tbl.parentElement;
+        if (!p || p.dataset.mscroll) return;
+        p.dataset.mscroll = '1';
+        p.style.overflowX = 'auto';
+        p.style.webkitOverflowScrolling = 'touch';
+        p.style.overscrollBehaviorX = 'contain';
+      });
+    }
+
+    function setup() {
+      fixTables();
+      new MutationObserver(fixTables).observe(document.body, { childList: true, subtree: true });
+    }
+
+    if (document.body) { setup(); }
+    else { document.addEventListener('DOMContentLoaded', setup); }
+  })();
+
+  // ── Mobile touch-scroll fallback (drives scrollLeft manually) ─────────────
+  // Supplements native scroll for older iOS/Android that ignore overflow-x:auto
+  // on non-standard scroll containers.
   (function() {
     var _el = null, _sx = 0, _sy = 0, _sl = 0;
 
@@ -321,10 +348,6 @@ def main() -> None:
     }
 
     function findOverflow(block) {
-      // Gradio's dataframe uses <tbody> as the horizontal scroll container
-      // (overflow-x:scroll on tbody). Scan ALL child elements — not just divs —
-      // and return the deepest one that has BOTH overflow-x:scroll/auto AND
-      // actual horizontal overflow (scrollWidth > clientWidth).
       var els = block.querySelectorAll('*');
       var best = null;
       for (var i = 0; i < els.length; i++) {
