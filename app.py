@@ -304,34 +304,60 @@ def main() -> None:
   window.__plotlyDlPatchInstalled = true;
 
   // ── Mobile touch-scroll for watchlist/allocation tables ──────────────────
-  // CSS touch-action alone is blocked by iOS Safari parent gesture interception.
-  // Explicitly intercepting touchmove with preventDefault() is the reliable fix.
+  // Document-level handler: walks from the touch target up to the nearest
+  // .watchlist-df block, then scans its children for whichever div actually
+  // has horizontal overflow — no hard-coded Gradio class names required.
+  // preventDefault() on touchmove overrides iOS Safari's page-scroll capture.
   (function() {
-    function patchVP(vp) {
-      if (vp._mts) return;   // already patched
-      vp._mts = true;
-      var sx, sy, sl;
-      vp.addEventListener('touchstart', function(e) {
-        sx = e.touches[0].clientX;
-        sy = e.touches[0].clientY;
-        sl = vp.scrollLeft;
-      }, { passive: true });
-      vp.addEventListener('touchmove', function(e) {
-        if (!e.touches[0]) return;
-        var dx = sx - e.touches[0].clientX;
-        var dy = sy - e.touches[0].clientY;
-        if (Math.abs(dx) > Math.abs(dy)) {
-          e.preventDefault();      // stop page scroll
-          vp.scrollLeft = sl + dx; // manually scroll the table
-        }
-      }, { passive: false });
+    var _el = null, _sx = 0, _sy = 0, _sl = 0;
+
+    function blockFor(target) {
+      var el = target;
+      while (el && el !== document.body) {
+        if (el.classList && el.classList.contains('watchlist-df')) return el;
+        el = el.parentElement;
+      }
+      return null;
     }
-    function scan() {
-      document.querySelectorAll('.watchlist-df .virtual-table-viewport').forEach(patchVP);
+
+    function findOverflow(block) {
+      // Check known Gradio class names first (version-agnostic fallback below)
+      var known = block.querySelector(
+        '.virtual-table-viewport, .table-wrap, [class*="viewport"]'
+      );
+      if (known && known.scrollWidth > known.clientWidth + 2) return known;
+      // Scan every div — pick the shallowest one with actual horizontal overflow
+      var divs = block.querySelectorAll('div');
+      for (var i = 0; i < divs.length; i++) {
+        if (divs[i].scrollWidth > divs[i].clientWidth + 2) return divs[i];
+      }
+      return null;
     }
-    var obs = new MutationObserver(scan);
-    obs.observe(document.body, { childList: true, subtree: true });
-    [200, 800, 2000].forEach(function(d) { setTimeout(scan, d); });
+
+    document.addEventListener('touchstart', function(e) {
+      _el = null;
+      if (!e.touches[0]) return;
+      var block = blockFor(e.target);
+      if (!block) return;
+      var target = findOverflow(block);
+      if (!target) return;
+      _el = target;
+      _sx = e.touches[0].clientX;
+      _sy = e.touches[0].clientY;
+      _sl = target.scrollLeft;
+    }, { passive: true });
+
+    document.addEventListener('touchmove', function(e) {
+      if (!_el || !e.touches[0]) return;
+      var dx = _sx - e.touches[0].clientX;
+      var dy = _sy - e.touches[0].clientY;
+      if (Math.abs(dx) > Math.abs(dy)) {
+        e.preventDefault();
+        _el.scrollLeft = _sl + dx;
+      }
+    }, { passive: false });
+
+    document.addEventListener('touchend', function() { _el = null; }, { passive: true });
   })();
 """
     # `js=` form: arrow function the deprecated Blocks(js=) hook awaits.

@@ -343,16 +343,24 @@ button.sample-q:hover, .sample-q button:hover {
 
 /* ── Watchlist dataframe: scrollable on mobile ───────────── */
 /*
- * Gradio 6 virtual table: .virtual-table-viewport is the scroll container
- * (overflow:auto built-in; max-height injected by max_height=380 in Python).
- * Without touch-action the browser intercepts swipes for page scroll instead
- * of letting the element scroll. overscroll-behavior:contain stops chaining.
+ * Belt-and-suspenders: apply overflow-x:auto at every level so that
+ * whichever element Gradio uses as the scroll container (changes across
+ * versions) is always scrollable. touch-action lets the browser know the
+ * element handles pan gestures; JS in app.py handles iOS Safari interception.
  */
-.watchlist-df .virtual-table-viewport {
+.watchlist-df,
+.watchlist-df > div,
+.watchlist-df .table-wrap,
+.watchlist-df .virtual-table-viewport,
+.watchlist-df [class*="viewport"],
+.watchlist-df [class*="table-wrap"] {
     overflow-x: auto !important;
     touch-action: pan-x pan-y !important;
     overscroll-behavior: contain !important;
     -webkit-overflow-scrolling: touch !important;
+}
+.watchlist-df table {
+    min-width: max-content !important;
 }
 .watchlist-df th,
 .watchlist-df td { white-space: nowrap !important; }
