@@ -377,6 +377,7 @@ def main() -> None:
         allowed_paths=[tempfile.gettempdir()],
         max_threads=40,
         head=_LAUNCH_HEAD,
+        ssr_mode=False,
     )
 
 
