@@ -341,41 +341,46 @@ button.sample-q:hover, .sample-q button:hover {
 }
 .js-plotly-plot .plotly { width: 100% !important; }
 
-/* ── Watchlist dataframe: scrollable incl. mobile ───────── */
+/* ── Watchlist dataframe: scrollable on mobile ───────────── */
 /*
- * Without max_height in Python, Gradio injects no inline overflow styles.
- * Gradio's inner .scroll-hide div already provides overflow-x:auto (desktop).
- * For mobile we only need touch-action on every ancestor so iOS/Android lets
- * the touch gesture reach the scrollable element instead of the page.
- * Do NOT touch inner element overflow — table layout depends on it.
+ * Mobile fix: overscroll-behavior:contain stops scroll from chaining to the
+ * page. touch-action:pan-x pan-y tells iOS/Android to let the element handle
+ * both swipe directions instead of handing them to the page scroll.
+ * max_height=380 is set in Python so Gradio injects overflow-y on .table-wrap.
  */
 .watchlist-df {
-    max-width: 100% !important;
     width: 100% !important;
-    max-height: 380px !important;
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-    touch-action: pan-x pan-y !important;
+    max-width: 100% !important;
 }
 .watchlist-df > div,
 .watchlist-df .wrap,
-.watchlist-df .block,
-.watchlist-df .overflow-y-auto,
+.watchlist-df .block {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+/* vertical scroll container (Gradio injects max-height here via max_height=) */
 .watchlist-df .table-wrap,
-.watchlist-df .scroll-hide,
+.watchlist-df .overflow-y-auto,
 .watchlist-df .tableContainer,
 .watchlist-df [data-testid="dataframe-responsive"] {
-    touch-action: pan-x pan-y !important;
+    max-height: 380px !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain !important;
     -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-x pan-y !important;
+}
+/* horizontal scroll container (.scroll-hide only hides the scrollbar visually) */
+.watchlist-df .scroll-hide {
     overflow-x: auto !important;
+    overscroll-behavior: contain !important;
+    -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-x pan-y !important;
     max-width: 100% !important;
 }
 .watchlist-df table {
     table-layout: auto !important;
     min-width: max-content !important;
 }
-.watchlist-df thead,
-.watchlist-df tbody { width: auto !important; }
 .watchlist-df th,
 .watchlist-df td { white-space: nowrap !important; }
 

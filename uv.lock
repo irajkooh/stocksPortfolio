@@ -2063,7 +2063,9 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "audioop-lts" },
+    { name = "beautifulsoup4" },
     { name = "chromadb" },
+    { name = "curl-cffi" },
     { name = "fastapi" },
     { name = "fastmcp" },
     { name = "gradio" },
@@ -2105,7 +2107,9 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "audioop-lts", specifier = ">=0.2.1" },
+    { name = "beautifulsoup4", specifier = ">=4.12.0" },
     { name = "chromadb", specifier = ">=0.5.0" },
+    { name = "curl-cffi", specifier = ">=0.7.0" },
     { name = "fastapi", specifier = ">=0.111.0" },
     { name = "fastmcp", specifier = ">=2.0.0" },
     { name = "gradio", specifier = ">=5.0.0" },
@@ -2134,7 +2138,7 @@ requires-dist = [
     { name = "sqlalchemy", specifier = ">=2.0.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30.0" },
     { name = "wikipedia", specifier = ">=1.4.0" },
-    { name = "yfinance", specifier = ">=0.2.40,<1.0" },
+    { name = "yfinance", specifier = ">=1.0.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -3304,7 +3308,7 @@ wheels = [
 
 [[package]]
 name = "yfinance"
-version = "0.2.59"
+version = "1.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "beautifulsoup4" },
@@ -3320,9 +3324,9 @@ dependencies = [
     { name = "requests" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/91/f2/776756439ce8de7b4e6c6df7c72340c6e6d6efe4d413011591d4432ef407/yfinance-0.2.59.tar.gz", hash = "sha256:632a6dbf6f912a9ca27fd4677903bec779a527bf29a5f9889af845d73c5ab7f3", size = 126907, upload-time = "2025-05-07T08:47:16.497Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9b/fd/943a7d71ce98a40b9006daccba96a83837acadb8e55361f41c7a81873013/yfinance-1.3.0.tar.gz", hash = "sha256:42c4e64a889dab8eeaffd3a66d4ccf1baffd566910ca63fb6332283f8f9b8a40", size = 145297, upload-time = "2026-04-16T19:51:05.785Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b4/53/c65b103b8ad6c3c0bc33d10493eb8721f2d7417886f1d814ef58f96482fd/yfinance-0.2.59-py2.py3-none-any.whl", hash = "sha256:9fdb762ee1be969af1cf592c7245952fd88790b8eebb71311153cbca39fee01c", size = 117376, upload-time = "2025-05-07T08:47:14.909Z" },
+    { url = "https://files.pythonhosted.org/packages/dc/bc/e46ed5dfb88c6f7af0f641ffb6227d32f484ea989a2987a52a9c35d17aa9/yfinance-1.3.0-py2.py3-none-any.whl", hash = "sha256:c89539f0cf6af026d570131189bd659a962e8fb942376ef8ff8913e77c9fca75", size = 133706, upload-time = "2026-04-16T19:51:04.298Z" },
 ]
 
 [[package]]

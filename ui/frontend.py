@@ -631,7 +631,7 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
         <div style="text-align:center;padding:24px 0 8px;">
           <h1 class="app-title">📈 AI Portfolio Manager</h1>
           <p style="color:#9CA3AF;margin:6px 0 0;font-size:.95rem;">
-            LangGraph Multi-Agent &nbsp;·&nbsp; RL-Optimised &nbsp;·&nbsp;
+            LangGraph Multi-Agent &nbsp;·&nbsp; Markowitz-Optimised &nbsp;·&nbsp;
             RAG Knowledge Base &nbsp;·&nbsp; Real-time Prices
           </p>
         </div>
@@ -710,6 +710,7 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                     datatype=["str", "str", "str", "str", "str", "str", "str", "str"],
                     interactive=False,
                     elem_classes=["watchlist-df"],
+                    max_height=380,
                 )
                 gr.Markdown("### Last optimized plan")
                 with gr.Row():
@@ -726,6 +727,7 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                     datatype=["str", "str", "str", "str", "str"],
                     interactive=False,
                     elem_classes=["watchlist-df"],
+                    max_height=380,
                 )
                 d_stamp = gr.Markdown()
                 spy_label = gr.Markdown(_date_range_label("Portfolio vs S&P 500"))
@@ -763,6 +765,7 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                     interactive=False,
                     elem_classes=["watchlist-df"],
                     label="",
+                    max_height=380,
                 )
 
                 # stub — kept for _switch_outs tuple compat
@@ -943,7 +946,7 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                 audio_out = gr.HTML(value="")
 
                 with gr.Group(visible=False) as chart_group:
-                    gr.Markdown("#### RL Optimisation Results")
+                    gr.Markdown("#### Optimisation Results")
                     with gr.Row():
                         chat_fig0 = gr.Plot()
                         chat_fig1 = gr.Plot()
