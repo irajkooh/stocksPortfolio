@@ -709,7 +709,6 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                     datatype=["str", "str", "str", "str", "str", "str", "str", "str"],
                     interactive=False,
                     elem_classes=["watchlist-df"],
-                    max_height=350,
                 )
                 gr.Markdown("### Last optimized plan")
                 with gr.Row():
@@ -726,7 +725,6 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                     datatype=["str", "str", "str", "str", "str"],
                     interactive=False,
                     elem_classes=["watchlist-df"],
-                    max_height=350,
                 )
                 d_stamp = gr.Markdown()
                 spy_label = gr.Markdown(_date_range_label("Portfolio vs S&P 500"))
@@ -764,7 +762,6 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                     interactive=False,
                     elem_classes=["watchlist-df"],
                     label="",
-                    max_height=350,
                 )
 
                 # stub — kept for _switch_outs tuple compat

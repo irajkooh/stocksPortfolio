@@ -342,13 +342,24 @@ button.sample-q:hover, .sample-q button:hover {
 .js-plotly-plot .plotly { width: 100% !important; }
 
 /* ── Watchlist dataframe: scrollable incl. mobile ───────── */
-/* Container must not clip; outer div becomes the horizontal scroll box. */
+/*
+ * Strategy: make the outermost .watchlist-df div the ONE scroll container.
+ * All inner Gradio/Svelte wrappers get overflow:visible so they never trap
+ * touch events.  max_height is removed from Python so Gradio injects no
+ * inline styles that would beat these !important rules.
+ */
 .watchlist-df {
-    max-width: 100% !important;
+    max-height: 350px !important;
     overflow-x: auto !important;
+    overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
+    touch-action: pan-x pan-y !important;
+    overscroll-behavior: contain !important;
+    max-width: 100% !important;
+    width: 100% !important;
 }
-/* Every Gradio internal wrapper that could hide overflow must allow x-scroll */
+/* All inner wrappers: let scroll events pass up to .watchlist-df */
+.watchlist-df *,
 .watchlist-df > div,
 .watchlist-df .wrap,
 .watchlist-df .block,
@@ -357,19 +368,16 @@ button.sample-q:hover, .sample-q button:hover {
 .watchlist-df .scroll-hide,
 .watchlist-df .tableContainer,
 .watchlist-df [data-testid="dataframe-responsive"] {
-    overflow-x: auto !important;
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch !important;
+    overflow: visible !important;
+    max-height: none !important;
     touch-action: pan-x pan-y !important;
-    overscroll-behavior-x: contain !important;
-    max-width: 100% !important;
+    max-width: none !important;
 }
 .watchlist-df table {
     table-layout: auto !important;
     min-width: max-content !important;
+    width: max-content !important;
 }
-.watchlist-df thead,
-.watchlist-df tbody { width: auto !important; }
 .watchlist-df th,
 .watchlist-df td { white-space: nowrap !important; }
 
