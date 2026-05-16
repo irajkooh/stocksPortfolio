@@ -219,15 +219,46 @@ def rename_portfolio(portfolio_id: int, new_name: str):
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
 def _watchlist_df(portfolio_id: int) -> list[list]:
-    """Return rows for the watchlist dataframe; CASH pinned at top.
-
-    Delegates to live_watchlist_rows so both the Portfolio tab and the
-    Dashboard tab always display identical price / change values.
-    Portfolio summary rows (eq-wt, optimized) are excluded; Sharpe /
-    Sortino columns are dropped so the 6-column table stays consistent.
-    """
+    """Return rows; CASH pinned at top. 6-col slice (no Sharpe/Sortino)."""
     full_rows = live_watchlist_rows(portfolio_id)
     return [r[:6] for r in full_rows if not str(r[0]).startswith("Portfolio")]
+
+
+# ── HTML table helpers (replaces gr.Dataframe for mobile scroll support) ──────
+
+_DASH_WATCH_HEADERS     = ["Ticker", "Price", "1d %", "1mo %", "3mo %", "1y %", "Sharpe (1y)", "Sortino (1y)"]
+_ALLOC_HEADERS          = ["Ticker", "Weight", "Dollars", "Shares", "Price"]
+_PORTFOLIO_WATCH_HEADERS = ["Ticker", "Price", "1d %", "1mo %", "3mo %", "1y %"]
+
+_TH = ("background:#1F2937;color:#9CA3AF;font-size:.75rem;"
+       "text-transform:uppercase;letter-spacing:.05em;"
+       "padding:8px 12px;white-space:nowrap;text-align:left;border:none;")
+_TD = "color:#E5E7EB;padding:6px 12px;white-space:nowrap;border-bottom:1px solid #1F2937;"
+_TD_ALT = "color:#E5E7EB;padding:6px 12px;white-space:nowrap;border-bottom:1px solid #1F2937;background:#0d1118;"
+
+
+def _watchlist_html(rows: list[list], headers: list[str]) -> str:
+    """Render rows + headers as a mobile-scrollable HTML table with inline styles."""
+    ths = "".join(f'<th style="{_TH}">{h}</th>' for h in headers)
+    trs = "".join(
+        '<tr>' + "".join(
+            f'<td style="{_TD_ALT if i % 2 else _TD}">{cell}</td>'
+            for cell in row
+        ) + '</tr>'
+        for i, row in enumerate(rows)
+    )
+    return (
+        '<div style="overflow-x:auto;overflow-y:auto;max-height:380px;'
+        '-webkit-overflow-scrolling:touch;width:100%;">'
+        '<table style="width:max-content;min-width:100%;border-collapse:collapse;">'
+        f'<thead><tr>{ths}</tr></thead>'
+        f'<tbody>{trs}</tbody>'
+        '</table></div>'
+    )
+
+
+def _watchlist_df_html(portfolio_id: int) -> str:
+    return _watchlist_html(_watchlist_df(portfolio_id), _PORTFOLIO_WATCH_HEADERS)
 
 
 def _portfolio_tickers_str(portfolio_id: int = 1) -> str:
@@ -433,12 +464,14 @@ def refresh_dashboard(portfolio_id: int = 1):
     watch_lbl = _date_range_label("Live watchlist")
     spy_lbl   = _date_range_label("Portfolio vs S&P 500")
     if m is None:
-        return (watch, "—", "—", "—", "—", "—", "—", "—", _placeholder(420), [],
+        return (_watchlist_html(watch, _DASH_WATCH_HEADERS),
+                "—", "—", "—", "—", "—", "—", "—", _placeholder(420),
+                _watchlist_html([], _ALLOC_HEADERS),
                 "_Run the Optimizer to see your plan._", vs_spy, watch_lbl, spy_lbl)
     sortino_s = f"{m['sortino']:.3f}" if m.get("sortino") is not None else "—"
     var_s     = f"{m['var_95']*100:.2f}%" if m.get("var_95") is not None else "—"
     return (
-        watch,
+        _watchlist_html(watch, _DASH_WATCH_HEADERS),
         f"${m['budget']:,.0f}",
         f"{m['expected_return']*100:.2f}%",
         f"{m['expected_vol']*100:.2f}%",
@@ -447,7 +480,7 @@ def refresh_dashboard(portfolio_id: int = 1):
         var_s,
         f"${m['cash_dollars']:,.0f}",
         last_plan_pie(portfolio_id),
-        rows,
+        _watchlist_html(rows, _ALLOC_HEADERS),
         f"_Last optimized: {m['created_at'].strftime('%Y-%m-%d %H:%M:%S')}_",
         vs_spy,
         watch_lbl,
@@ -464,9 +497,9 @@ def add_ticker(ticker: str, portfolio_id: int):
         payload = HoldingCreate(ticker=ticker)
     except ValidationError as ve:
         msg = ve.errors()[0].get("msg", "invalid ticker")
-        return gr.update(), f"❌ {msg}", gr.update(), gr.update(), _watchlist_df(portfolio_id)
+        return gr.update(), f"❌ {msg}", gr.update(), gr.update(), _watchlist_df_html(portfolio_id)
     except Exception as e:
-        return gr.update(), f"❌ {e}", gr.update(), gr.update(), _watchlist_df(portfolio_id)
+        return gr.update(), f"❌ {e}", gr.update(), gr.update(), _watchlist_df_html(portfolio_id)
     with SessionLocal() as s:
         exists = (s.query(HoldingDB)
                    .filter_by(portfolio_id=portfolio_id, ticker=payload.ticker)
@@ -475,13 +508,13 @@ def add_ticker(ticker: str, portfolio_id: int):
             return (gr.update(value=""),
                     f"ℹ️ {payload.ticker} already on watchlist",
                     gr.update(), gr.update(),
-                    _watchlist_df(portfolio_id))
+                    _watchlist_df_html(portfolio_id))
         s.add(HoldingDB(portfolio_id=portfolio_id, ticker=payload.ticker))
         s.commit()
     rows = _watchlist_df(portfolio_id)
     tickers_for_dropdown = [r[0] for r in rows if r[0] != "CASH"]
     dd = gr.update(choices=tickers_for_dropdown, value=None)
-    return gr.update(value=""), f"✅ Added {payload.ticker}", dd, dd, rows
+    return gr.update(value=""), f"✅ Added {payload.ticker}", dd, dd, _watchlist_html(rows, _PORTFOLIO_WATCH_HEADERS)
 
 
 def update_position(ticker: str, shares, purchase_price, portfolio_id: int):
@@ -505,7 +538,7 @@ def update_position(ticker: str, shares, purchase_price, portfolio_id: int):
 def remove_ticker(ticker: str, portfolio_id: int):
     if not ticker or ticker == "CASH":
         rows = _watchlist_df(portfolio_id)
-        return "⚠️ pick a ticker (CASH is not removable)", rows, gr.update(), gr.update()
+        return "⚠️ pick a ticker (CASH is not removable)", _watchlist_html(rows, _PORTFOLIO_WATCH_HEADERS), gr.update(), gr.update()
     with SessionLocal() as s:
         row = (s.query(HoldingDB)
                 .filter_by(portfolio_id=portfolio_id, ticker=ticker).first())
@@ -515,7 +548,7 @@ def remove_ticker(ticker: str, portfolio_id: int):
     rows = _watchlist_df(portfolio_id)
     tickers_for_dropdown = [r[0] for r in rows if r[0] != "CASH"]
     dd = gr.update(choices=tickers_for_dropdown, value=None)
-    return f"🗑️ Removed {ticker}", rows, dd, dd
+    return f"🗑️ Removed {ticker}", _watchlist_html(rows, _PORTFOLIO_WATCH_HEADERS), dd, dd
 
 
 # ── Chat handler ───────────────────────────────────────────────────────────────
@@ -605,7 +638,7 @@ def _switch_portfolio(choice: str):
     dd = gr.update(choices=tickers, value=None)
     opt = _load_saved_optimizer(pid)
     return (
-        pid, *dash, rows, dd, dd,
+        pid, *dash, _watchlist_html(rows, _PORTFOLIO_WATCH_HEADERS), dd, dd,
         _date_range_label("Live prices"),
         [],   # chatbot: clear history
         *opt,
@@ -705,13 +738,7 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
             # ════════════════════════════════════════════════════════════════
             with gr.Tab("📊 Dashboard") as dash_tab:
                 watch_label = gr.Markdown(_date_range_label("Live watchlist"))
-                dash_watch = gr.Dataframe(
-                    headers=["Ticker", "Price", "1d %", "1mo %", "3mo %", "1y %", "Sharpe (1y)", "Sortino (1y)"],
-                    datatype=["str", "str", "str", "str", "str", "str", "str", "str"],
-                    interactive=False,
-                    elem_classes=["watchlist-df"],
-                    max_height=380,
-                )
+                dash_watch = gr.HTML(value="")
                 gr.Markdown("### Last optimized plan")
                 with gr.Row():
                     d_budget  = gr.Textbox(label="Budget",          interactive=False)
@@ -722,13 +749,7 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                     d_var     = gr.Textbox(label="VaR 95% (ann.)",   interactive=False)
                     d_cash    = gr.Textbox(label="Cash",             interactive=False)
                 dash_pie = gr.Plot(label="Allocation", min_width=400, value=_placeholder(420))
-                dash_table = gr.Dataframe(
-                    headers=["Ticker", "Weight", "Dollars", "Shares", "Price"],
-                    datatype=["str", "str", "str", "str", "str"],
-                    interactive=False,
-                    elem_classes=["watchlist-df"],
-                    max_height=380,
-                )
+                dash_table = gr.HTML(value="")
                 d_stamp = gr.Markdown()
                 spy_label = gr.Markdown(_date_range_label("Portfolio vs S&P 500"))
                 dash_vs_spy = gr.Plot(label="Portfolio vs S&P 500", min_width=400, value=_placeholder(460))
@@ -759,14 +780,7 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                         remove_status = gr.Markdown()
 
                 prices_label = gr.Markdown(_date_range_label("Live prices"))
-                watchlist_df = gr.Dataframe(
-                    headers=["Ticker", "Price", "1d %", "1mo %", "3mo %", "1y %"],
-                    datatype=["str", "str", "str", "str", "str", "str"],
-                    interactive=False,
-                    elem_classes=["watchlist-df"],
-                    label="",
-                    max_height=380,
-                )
+                watchlist_df = gr.HTML(value="")
 
                 # stub — kept for _switch_outs tuple compat
                 edit_dd = gr.State(None)
@@ -786,7 +800,7 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                     rows = _watchlist_df(pid)
                     tickers_for_dropdown = [r[0] for r in rows if r[0] != "CASH"]
                     dd = gr.update(choices=tickers_for_dropdown, value=None)
-                    return rows, dd, _date_range_label("Live prices")
+                    return _watchlist_html(rows, _PORTFOLIO_WATCH_HEADERS), dd, _date_range_label("Live prices")
 
                 demo.load(
                     _init_watchlist,

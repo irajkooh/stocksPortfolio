@@ -20,7 +20,7 @@ def sync_text_to_slider(text: str, current_pct: float):
     return gr.update(value=dec * 100), gr.update(value=f"{dec * 100:.2f}%")
 
 
-_DASH_EMPTY = ("—", "—", "—", "—", "—", "—", "—", None, [], "_Run the Optimizer to see your plan._", None)
+_DASH_EMPTY = ("—", "—", "—", "—", "—", "—", "—", None, "", "_Run the Optimizer to see your plan._", None)
 
 
 def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
@@ -30,17 +30,17 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
     from ui.components.dashboard import live_watchlist_rows, last_plan_rows, last_plan_pie
 
     def _dash_outputs(saved_at):
-        from ui.frontend import _portfolio_vs_spy_fig
+        from ui.frontend import _portfolio_vs_spy_fig, _watchlist_html, _DASH_WATCH_HEADERS, _ALLOC_HEADERS
         import pandas as pd
         watch = live_watchlist_rows(portfolio_id)
         rows, m = last_plan_rows(portfolio_id)
         if m is None:
-            return (watch,) + _DASH_EMPTY
+            return (_watchlist_html(watch, _DASH_WATCH_HEADERS),) + _DASH_EMPTY
         vs_spy = _portfolio_vs_spy_fig(portfolio_id, opt_date_override=pd.Timestamp(saved_at.date()))
         sortino_s = f"{m['sortino']:.3f}" if m.get("sortino") is not None else "—"
         var_s     = f"{m['var_95']*100:.2f}%" if m.get("var_95") is not None else "—"
         return (
-            watch,
+            _watchlist_html(watch, _DASH_WATCH_HEADERS),
             f"${m['budget']:,.0f}",
             f"{m['expected_return']*100:.2f}%",
             f"{m['expected_vol']*100:.2f}%",
@@ -49,7 +49,7 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
             var_s,
             f"${m['cash_dollars']:,.0f}",
             last_plan_pie(portfolio_id),
-            rows,
+            _watchlist_html(rows, _ALLOC_HEADERS),
             f"_Last optimized: {m['created_at'].strftime('%Y-%m-%d %H:%M:%S')}_",
             vs_spy,
         )
@@ -63,7 +63,7 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
     try:
         rf = parse_rf(rf_text)
     except Exception as e:
-        out = (f"❌ {e}", "", "", "", "", "", "", None, None, None, "") + (None,) + _DASH_EMPTY
+        out = (f"❌ {e}", "", "", "", "", "", "", None, None, None, "") + ("",) + _DASH_EMPTY
         result = out + ("",) * (25 - len(out))
         return result[:25]
 
@@ -77,7 +77,7 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
             frontier_samples=int(frontier_samples),
         )
     except Exception as e:
-        out = (f"❌ {e}", "", "", "", "", "", "", None, None, None, "") + (None,) + _DASH_EMPTY
+        out = (f"❌ {e}", "", "", "", "", "", "", None, None, None, "") + ("",) + _DASH_EMPTY
         result = out + ("",) * (25 - len(out))
         return result[:25]
 
