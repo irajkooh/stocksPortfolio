@@ -357,4 +357,23 @@ button.sample-q:hover, .sample-q button:hover {
     color: #000 !important;
 }
 
+/* ── Watchlist dataframe: horizontal scroll on mobile ─── */
+/* Force table to natural content width so overflow exists */
+.watchlist-df table {
+    width: max-content !important;
+    min-width: 100% !important;
+}
+/* Prevent text wrapping so columns keep their natural widths */
+.watchlist-df th,
+.watchlist-df td {
+    white-space: nowrap !important;
+}
+/* Enable iOS-native touch scroll on Gradio's table-wrap container */
+.watchlist-df .table-wrap {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior-x: contain !important;
+    touch-action: pan-x pan-y !important;
+}
+
 """
