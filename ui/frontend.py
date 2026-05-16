@@ -3,6 +3,7 @@ import logging
 import os
 from datetime import date, timedelta
 import gradio as gr
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from pydantic import ValidationError
