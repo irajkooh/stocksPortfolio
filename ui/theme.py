@@ -343,23 +343,20 @@ button.sample-q:hover, .sample-q button:hover {
 
 /* ── Watchlist dataframe: scrollable incl. mobile ───────── */
 /*
- * Strategy: make the outermost .watchlist-df div the ONE scroll container.
- * All inner Gradio/Svelte wrappers get overflow:visible so they never trap
- * touch events.  max_height is removed from Python so Gradio injects no
- * inline styles that would beat these !important rules.
+ * Without max_height in Python, Gradio injects no inline overflow styles.
+ * Gradio's inner .scroll-hide div already provides overflow-x:auto (desktop).
+ * For mobile we only need touch-action on every ancestor so iOS/Android lets
+ * the touch gesture reach the scrollable element instead of the page.
+ * Do NOT touch inner element overflow — table layout depends on it.
  */
 .watchlist-df {
-    max-height: 350px !important;
-    overflow-x: auto !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    max-height: 380px !important;
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
     touch-action: pan-x pan-y !important;
-    overscroll-behavior: contain !important;
-    max-width: 100% !important;
-    width: 100% !important;
 }
-/* All inner wrappers: let scroll events pass up to .watchlist-df */
-.watchlist-df *,
 .watchlist-df > div,
 .watchlist-df .wrap,
 .watchlist-df .block,
@@ -368,16 +365,17 @@ button.sample-q:hover, .sample-q button:hover {
 .watchlist-df .scroll-hide,
 .watchlist-df .tableContainer,
 .watchlist-df [data-testid="dataframe-responsive"] {
-    overflow: visible !important;
-    max-height: none !important;
     touch-action: pan-x pan-y !important;
-    max-width: none !important;
+    -webkit-overflow-scrolling: touch !important;
+    overflow-x: auto !important;
+    max-width: 100% !important;
 }
 .watchlist-df table {
     table-layout: auto !important;
     min-width: max-content !important;
-    width: max-content !important;
 }
+.watchlist-df thead,
+.watchlist-df tbody { width: auto !important; }
 .watchlist-df th,
 .watchlist-df td { white-space: nowrap !important; }
 
