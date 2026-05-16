@@ -68,8 +68,13 @@ def live_watchlist_rows(portfolio_id: int) -> list[list]:
     with _SL() as s:
         alloc_row = s.get(_ADB, portfolio_id)
 
+    rf = alloc_row.risk_free_rate if alloc_row else 0.04
+    cash_1d  = rf / 252
+    cash_1mo = rf / 12
+    cash_3mo = rf / 4
+    cash_1y  = rf
+
     if alloc_row:
-        # Use both Sharpe and Sortino as stored by the optimizer for consistency
         o_sharpe = alloc_row.sharpe
         o_sortino = alloc_row.sortino
         opt_row = ["Portfolio (optimized)", "—", "—", "—", "—", "—",
@@ -78,7 +83,12 @@ def live_watchlist_rows(portfolio_id: int) -> list[list]:
         opt_row = None
 
     rows = (
-        [["CASH", "$1.00", "+0.00%", "+0.00%", "+0.00%", "+0.00%", "—", "—"]]
+        [["CASH", "$1.00",
+          f"+{cash_1d*100:.3f}%",
+          f"+{cash_1mo*100:.2f}%",
+          f"+{cash_3mo*100:.2f}%",
+          f"+{cash_1y*100:.2f}%",
+          "0.00", "0.00"]]
         + stock_rows
         + [eq_row]
     )

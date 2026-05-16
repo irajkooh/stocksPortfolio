@@ -342,8 +342,16 @@ button.sample-q:hover, .sample-q button:hover {
 .js-plotly-plot .plotly { width: 100% !important; }
 
 /* ── Watchlist dataframe: scrollable incl. mobile ───────── */
-/* Only the inner scroll wrapper gets overflow; outer wrappers must NOT
-   become scroll containers or they create nested scroll traps. */
+/* Container must not clip; outer div becomes the horizontal scroll box. */
+.watchlist-df {
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+}
+/* Every Gradio internal wrapper that could hide overflow must allow x-scroll */
+.watchlist-df > div,
+.watchlist-df .wrap,
+.watchlist-df .block,
 .watchlist-df .overflow-y-auto,
 .watchlist-df .table-wrap,
 .watchlist-df .scroll-hide,
@@ -353,9 +361,13 @@ button.sample-q:hover, .sample-q button:hover {
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
     touch-action: pan-x pan-y !important;
-    overscroll-behavior: contain !important;
+    overscroll-behavior-x: contain !important;
+    max-width: 100% !important;
 }
-.watchlist-df table { table-layout: auto !important; }
+.watchlist-df table {
+    table-layout: auto !important;
+    min-width: max-content !important;
+}
 .watchlist-df thead,
 .watchlist-df tbody { width: auto !important; }
 .watchlist-df th,

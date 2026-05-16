@@ -29,13 +29,14 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
     from core.models import HoldingDB
     from ui.components.dashboard import live_watchlist_rows, last_plan_rows, last_plan_pie
 
-    def _dash_outputs():
+    def _dash_outputs(saved_at):
         from ui.frontend import _portfolio_vs_spy_fig
+        import pandas as pd
         watch = live_watchlist_rows(portfolio_id)
         rows, m = last_plan_rows(portfolio_id)
         if m is None:
             return (watch,) + _DASH_EMPTY
-        vs_spy = _portfolio_vs_spy_fig(portfolio_id)
+        vs_spy = _portfolio_vs_spy_fig(portfolio_id, opt_date_override=pd.Timestamp(saved_at.date()))
         sortino_s = f"{m['sortino']:.3f}" if m.get("sortino") is not None else "—"
         var_s     = f"{m['var_95']*100:.2f}%" if m.get("var_95") is not None else "—"
         return (
@@ -80,7 +81,9 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
         result = out + ("",) * (25 - len(out))
         return result[:25]
 
+    from datetime import datetime as _dt
     fig_p, fig_b, fig_f = build_plots(result_obj)
+    saved_at = _dt.utcnow()
     save_allocation(
         portfolio_id,
         result_obj,
@@ -104,7 +107,7 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
         f"${result_obj['cash_dollars']:,.0f}",
         fig_p, fig_b, fig_f,
         commentary,
-    ) + _dash_outputs()
+    ) + _dash_outputs(saved_at)
     # Final safeguard: always return exactly 25 outputs
     result = out + ("",) * (25 - len(out))
     return result[:25]

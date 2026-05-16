@@ -256,7 +256,11 @@ def _period_date_range(period: str) -> str:
     return f"{start.strftime('%b %d, %Y')} — {today.strftime('%b %d, %Y')}"
 
 
-def _portfolio_vs_spy_fig(portfolio_id: int, period: str = "1y") -> go.Figure:
+def _portfolio_vs_spy_fig(
+    portfolio_id: int,
+    period: str = "1y",
+    opt_date_override: "pd.Timestamp | None" = None,
+) -> go.Figure:
     """Line chart: equal-weight & optimized-weight portfolio cumulative return vs ^GSPC."""
     import json
     from core.models import PortfolioAllocationDB
@@ -268,11 +272,14 @@ def _portfolio_vs_spy_fig(portfolio_id: int, period: str = "1y") -> go.Figure:
 
     # Parse optimized weights (stock-only, normalized so they sum to 1)
     opt_weights: dict[str, float] = {}
+    opt_date: "pd.Timestamp | None" = opt_date_override
     if alloc_row:
         allocs = json.loads(alloc_row.allocations_json)
         total_w = sum(v["weight"] for v in allocs.values())
         if total_w > 0:
             opt_weights = {t: v["weight"] / total_w for t, v in allocs.items()}
+        if opt_date is None and alloc_row.created_at:
+            opt_date = pd.Timestamp(alloc_row.created_at.date())
 
     fig = go.Figure()
     fig.update_layout(
@@ -319,6 +326,47 @@ def _portfolio_vs_spy_fig(portfolio_id: int, period: str = "1y") -> go.Figure:
                  {t: len(s) for t, s in closes.items()},
                  len(spy))
 
+    def _add_split_trace(
+        x: "pd.DatetimeIndex",
+        y: "np.ndarray",
+        name: str,
+        color: str,
+        dash_before: str = "dot",
+        width_before: float = 1.5,
+        width_after: float = 2.5,
+        opacity_before: float = 0.4,
+        group: str = "",
+    ) -> None:
+        """Add one logical series as two styled segments split at opt_date."""
+        # Split only when there's a meaningful "after" window (at least 2 points after opt_date)
+        n_after = int((x > opt_date).sum()) if opt_date is not None else 0
+        split = opt_date is not None and x[0] < opt_date and n_after >= 2
+        if split:
+            before = x <= opt_date
+            after  = x >= opt_date  # overlap at opt_date keeps the line connected
+            fig.add_trace(go.Scatter(
+                x=x[before], y=y[before],
+                mode="lines", name=name,
+                line=dict(color=color, width=width_before, dash=dash_before),
+                opacity=opacity_before,
+                legendgroup=group, showlegend=False,
+            ))
+            fig.add_trace(go.Scatter(
+                x=x[after], y=y[after],
+                mode="lines", name=name,
+                line=dict(color=color, width=width_after),
+                legendgroup=group, showlegend=True,
+            ))
+        else:
+            # No split: render full line solid/bright (either no opt_date, or optimized today
+            # with no post-optimization history yet, or opt_date is outside the data window)
+            fig.add_trace(go.Scatter(
+                x=x, y=y,
+                mode="lines", name=name,
+                line=dict(color=color, width=width_after),
+                legendgroup=group,
+            ))
+
     if closes:
         df = pd.concat(closes, axis=1).dropna(how="any")
         if len(df) < 5:
@@ -327,34 +375,48 @@ def _portfolio_vs_spy_fig(portfolio_id: int, period: str = "1y") -> go.Figure:
         if not df.empty:
             norm = df.div(df.iloc[0]).mul(100.0)
 
-            # Equal-weighted line
             port_eq = norm.mean(axis=1)
-            fig.add_trace(go.Scatter(
-                x=port_eq.index, y=port_eq.values,
-                mode="lines", name="Portfolio (equal-weighted)",
-                line=dict(color="#00D4FF", width=2),
-            ))
+            _add_split_trace(port_eq.index, port_eq.values,
+                             "Portfolio (equal-weighted)", "#00D4FF", group="eq")
 
-            # Optimized-weighted line (only when a saved plan exists)
             if opt_weights:
                 common = [t for t in df.columns if t in opt_weights]
                 if common:
                     w = pd.Series({t: opt_weights[t] for t in common})
                     w = w / w.sum()
                     opt_port = norm[common].mul(w, axis=1).sum(axis=1)
-                    fig.add_trace(go.Scatter(
-                        x=opt_port.index, y=opt_port.values,
-                        mode="lines", name="Portfolio (optimized)",
-                        line=dict(color="#00FF94", width=2, dash="dash"),
-                    ))
+                    _add_split_trace(opt_port.index, opt_port.values,
+                                     "Portfolio (optimized)", "#00FF94", group="opt")
 
     if not spy.empty:
         spy_norm = spy.div(spy.iloc[0]).mul(100.0)
-        fig.add_trace(go.Scatter(
-            x=spy_norm.index, y=spy_norm.values,
-            mode="lines", name="S&P 500",
-            line=dict(color="#FFA500", width=2, dash="dot"),
-        ))
+        _add_split_trace(spy_norm.index, spy_norm.values,
+                         "S&P 500", "#FFA500", group="spy")
+
+    # Vertical marker + shaded region for the post-optimization period
+    if opt_date is not None and fig.data:
+        all_x = pd.DatetimeIndex([t for tr in fig.data if tr.x is not None for t in tr.x])
+        # Show marker whenever opt_date is within the data window (inclusive on both ends)
+        if not all_x.empty and all_x.min() <= opt_date:
+            marker_x = min(opt_date, all_x.max())
+            fig.add_vline(
+                x=str(marker_x.date()),
+                line=dict(color="#FFD700", width=1.5, dash="dash"),
+            )
+            fig.add_annotation(
+                x=marker_x, y=1.0, xref="x", yref="paper",
+                text="<b>Optimized</b>", showarrow=False,
+                font=dict(color="#FFD700", size=11),
+                bgcolor="rgba(10,14,26,0.7)", bordercolor="#FFD700",
+                borderwidth=1, borderpad=3,
+                xanchor="left", yanchor="top", xshift=6,
+            )
+            if marker_x < all_x.max():
+                fig.add_vrect(
+                    x0=marker_x, x1=all_x.max(),
+                    fillcolor="rgba(0,255,148,0.04)",
+                    layer="below", line_width=0,
+                )
 
     if not fig.data:
         fig.add_annotation(text="No price history available",
@@ -794,6 +856,10 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                              m_sortino, m_var, m_cash,
                              fig_pie, fig_bar, fig_frontier, opt_commentary]
                             + _dash_outs,
+                ).then(
+                    _init_watchlist,
+                    [portfolio_state],
+                    [watchlist_df, remove_dd, prices_label],
                 )
 
             # ════════════════════════════════════════════════════════════════

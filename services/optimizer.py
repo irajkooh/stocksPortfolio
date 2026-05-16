@@ -318,6 +318,7 @@ def save_allocation(portfolio_id: int, result: dict[str, Any],
                     budget: float, target_vol: float, lookback: str,
                     commentary: str = "") -> None:
     """Persist (overwrite) the single allocation row for this portfolio."""
+    from datetime import datetime as _dt
     from core.database import SessionLocal
     from core.models import PortfolioAllocationDB
     m = result["metrics"]
@@ -341,4 +342,5 @@ def save_allocation(portfolio_id: int, result: dict[str, Any],
         row.allocations_json = payload
         row.frontier_json    = frontier_payload
         row.commentary       = commentary
+        row.created_at       = _dt.utcnow()
         s.commit()
