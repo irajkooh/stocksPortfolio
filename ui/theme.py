@@ -343,43 +343,15 @@ button.sample-q:hover, .sample-q button:hover {
 
 /* ── Watchlist dataframe: scrollable on mobile ───────────── */
 /*
- * Mobile fix: overscroll-behavior:contain stops scroll from chaining to the
- * page. touch-action:pan-x pan-y tells iOS/Android to let the element handle
- * both swipe directions instead of handing them to the page scroll.
- * max_height=380 is set in Python so Gradio injects overflow-y on .table-wrap.
+ * Gradio 6 virtual table: .virtual-table-viewport is the scroll container
+ * (overflow:auto built-in; max-height injected by max_height=380 in Python).
+ * Without touch-action the browser intercepts swipes for page scroll instead
+ * of letting the element scroll. overscroll-behavior:contain stops chaining.
  */
-.watchlist-df {
-    width: 100% !important;
-    max-width: 100% !important;
-}
-.watchlist-df > div,
-.watchlist-df .wrap,
-.watchlist-df .block {
-    width: 100% !important;
-    max-width: 100% !important;
-}
-/* vertical scroll container (Gradio injects max-height here via max_height=) */
-.watchlist-df .table-wrap,
-.watchlist-df .overflow-y-auto,
-.watchlist-df .tableContainer,
-.watchlist-df [data-testid="dataframe-responsive"] {
-    max-height: 380px !important;
-    overflow-y: auto !important;
+.watchlist-df .virtual-table-viewport {
+    touch-action: pan-x pan-y !important;
     overscroll-behavior: contain !important;
     -webkit-overflow-scrolling: touch !important;
-    touch-action: pan-x pan-y !important;
-}
-/* horizontal scroll container (.scroll-hide only hides the scrollbar visually) */
-.watchlist-df .scroll-hide {
-    overflow-x: auto !important;
-    overscroll-behavior: contain !important;
-    -webkit-overflow-scrolling: touch !important;
-    touch-action: pan-x pan-y !important;
-    max-width: 100% !important;
-}
-.watchlist-df table {
-    table-layout: auto !important;
-    min-width: max-content !important;
 }
 .watchlist-df th,
 .watchlist-df td { white-space: nowrap !important; }
