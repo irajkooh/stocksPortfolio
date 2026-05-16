@@ -341,28 +341,6 @@ button.sample-q:hover, .sample-q button:hover {
 }
 .js-plotly-plot .plotly { width: 100% !important; }
 
-/* ── Watchlist dataframe: scrollable on mobile ───────────── */
-/*
- * Only apply overflow-x:auto to the actual scroll viewport, NOT to any
- * ancestor divs. Gradio's virtual table uses position:absolute rows inside
- * a relative container — adding overflow:auto on a parent clips those rows,
- * causing "only first column visible". The JS touch handler in app.py
- * manually scrolls the overflow container on iOS Safari.
- */
-.watchlist-df .virtual-table-viewport,
-.watchlist-df .table-wrap,
-.watchlist-df [class*="virtual-table-viewport"],
-.watchlist-df [class*="table-wrap"] {
-    overflow-x: auto !important;
-    touch-action: pan-x pan-y !important;
-    overscroll-behavior-x: contain !important;
-    -webkit-overflow-scrolling: touch !important;
-}
-.watchlist-df table {
-    min-width: max-content !important;
-}
-.watchlist-df th,
-.watchlist-df td { white-space: nowrap !important; }
 
 /* ── Watchlist dataframe: black on white ─────────────── */
 .watchlist-df,
