@@ -321,17 +321,19 @@ def main() -> None:
     }
 
     function findOverflow(block) {
-      // Check known Gradio class names first (version-agnostic fallback below)
-      var known = block.querySelector(
-        '.virtual-table-viewport, .table-wrap, [class*="viewport"]'
-      );
-      if (known && known.scrollWidth > known.clientWidth + 2) return known;
-      // Scan every div — pick the shallowest one with actual horizontal overflow
-      var divs = block.querySelectorAll('div');
-      for (var i = 0; i < divs.length; i++) {
-        if (divs[i].scrollWidth > divs[i].clientWidth + 2) return divs[i];
+      // Gradio's dataframe uses <tbody> as the horizontal scroll container
+      // (overflow-x:scroll on tbody). Scan ALL child elements — not just divs —
+      // and return the deepest one that has BOTH overflow-x:scroll/auto AND
+      // actual horizontal overflow (scrollWidth > clientWidth).
+      var els = block.querySelectorAll('*');
+      var best = null;
+      for (var i = 0; i < els.length; i++) {
+        var el = els[i];
+        if (el.scrollWidth <= el.clientWidth + 2) continue;
+        var ox = window.getComputedStyle(el).overflowX;
+        if (ox === 'scroll' || ox === 'auto') best = el;
       }
-      return null;
+      return best;
     }
 
     document.addEventListener('touchstart', function(e) {
