@@ -271,10 +271,10 @@ def _watchlist_html(rows: list[list], headers: list[str]) -> str:
             elif is_ratio:
                 color = "color:#A78BFA;"
                 extra = ""
-            elif is_opt and j == 0:
+            elif is_opt:
                 color = "color:#00D4FF;"
-                extra = "font-weight:700;"
-            elif is_eq and j == 0:
+                extra = "font-weight:700;" if j == 0 else ""
+            elif is_eq:
                 color = "color:#00FF94;"
                 extra = ""
             else:
