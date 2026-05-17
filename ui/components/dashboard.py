@@ -29,36 +29,50 @@ def live_watchlist_rows(portfolio_id: int) -> list[list]:
             s.query(HoldingDB).filter_by(portfolio_id=portfolio_id).all()
         ))
 
-    # Fetch 1-year returns for each ticker (cached, no extra network cost)
+    # Fetch histories and period returns for each ticker in one pass
     returns_map: dict[str, np.ndarray] = {}
+    period_map: dict[str, dict[str, float]] = {}
     for t in tickers:
         hist = get_historical(t, period="1y")
         if hist is not None and not hist.empty:
             returns_map[t] = hist["Close"].pct_change().dropna().values
+        p = get_period_changes(t) or {}
+        period_map[t] = {
+            "1d":  float(p.get("change_1d_pct",  0.0) or 0.0),
+            "1mo": float(p.get("change_1mo_pct", 0.0) or 0.0),
+            "3mo": float(p.get("change_3mo_pct", 0.0) or 0.0),
+            "1y":  float(p.get("change_1y_pct",  0.0) or 0.0),
+        }
 
     stock_rows: list[list] = []
     for t in tickers:
         info    = get_stock_info(t) or {}
-        periods = get_period_changes(t) or {}
         price   = float(info.get("price") or 0.0)
         sharpe, sortino = _stock_ratios(returns_map.get(t, np.array([])))
-        change_1d = float(periods.get("change_1d_pct") or 0.0)
+        pm = period_map[t]
         stock_rows.append([
             t, f"${price:.2f}",
-            f"{change_1d:+.2f}%",
-            f"{periods.get('change_1mo_pct', 0.0):+.2f}%",
-            f"{periods.get('change_3mo_pct', 0.0):+.2f}%",
-            f"{periods.get('change_1y_pct',  0.0):+.2f}%",
+            f"{pm['1d']:+.2f}%",
+            f"{pm['1mo']:+.2f}%",
+            f"{pm['3mo']:+.2f}%",
+            f"{pm['1y']:+.2f}%",
             f"{sharpe:.2f}", f"{sortino:.2f}",
         ])
 
     # Equal-weighted portfolio row
-    if returns_map:
+    if tickers and returns_map:
         min_len  = min(len(v) for v in returns_map.values())
         port_r   = np.mean([v[-min_len:] for v in returns_map.values()], axis=0)
         p_sharpe, p_sortino = _stock_ratios(port_r)
-        eq_row = ["Portfolio (eq-wt)", "—", "—", "—", "—", "—",
-                  f"{p_sharpe:.2f}", f"{p_sortino:.2f}"]
+        n = len(tickers)
+        eq_row = [
+            "Portfolio (eq-wt)", "—",
+            f"{sum(period_map[t]['1d']  for t in tickers)/n:+.2f}%",
+            f"{sum(period_map[t]['1mo'] for t in tickers)/n:+.2f}%",
+            f"{sum(period_map[t]['3mo'] for t in tickers)/n:+.2f}%",
+            f"{sum(period_map[t]['1y']  for t in tickers)/n:+.2f}%",
+            f"{p_sharpe:.2f}", f"{p_sortino:.2f}",
+        ]
     else:
         eq_row = ["Portfolio (eq-wt)", "—", "—", "—", "—", "—", "—", "—"]
 
@@ -75,10 +89,29 @@ def live_watchlist_rows(portfolio_id: int) -> list[list]:
     cash_1y  = rf
 
     if alloc_row:
-        o_sharpe = alloc_row.sharpe
+        o_sharpe  = alloc_row.sharpe
         o_sortino = alloc_row.sortino
-        opt_row = ["Portfolio (optimized)", "—", "—", "—", "—", "—",
-                   f"{o_sharpe:.2f}", f"{o_sortino:.2f}"]
+        allocs    = json.loads(alloc_row.allocations_json)
+        cash_w    = alloc_row.cash_dollars / alloc_row.budget if alloc_row.budget else 0.0
+        opt_1d = opt_1mo = opt_3mo = opt_1y = 0.0
+        for ticker, v in allocs.items():
+            w  = float(v["weight"])
+            pm = period_map.get(ticker)
+            if pm:
+                opt_1d  += w * pm["1d"]
+                opt_1mo += w * pm["1mo"]
+                opt_3mo += w * pm["3mo"]
+                opt_1y  += w * pm["1y"]
+        # Add cash contribution (annualised rf scaled to each period)
+        opt_1d  += cash_w * cash_1d  * 100
+        opt_1mo += cash_w * cash_1mo * 100
+        opt_3mo += cash_w * cash_3mo * 100
+        opt_1y  += cash_w * cash_1y  * 100
+        opt_row = [
+            "Portfolio (optimized)", "—",
+            f"{opt_1d:+.2f}%", f"{opt_1mo:+.2f}%", f"{opt_3mo:+.2f}%", f"{opt_1y:+.2f}%",
+            f"{o_sharpe:.2f}", f"{o_sortino:.2f}",
+        ]
     else:
         opt_row = None
 
