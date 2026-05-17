@@ -253,7 +253,6 @@ def _watchlist_html(rows: list[list], headers: list[str]) -> str:
         label  = str(row[0]) if row else ""
         is_opt = label.startswith("Portfolio (optimized)")
         is_eq  = label.startswith("Portfolio (eq-wt)")
-        is_port = is_opt or is_eq
 
         row_bg = (
             "background:#0f1a10;" if is_opt else
