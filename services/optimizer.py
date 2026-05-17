@@ -35,11 +35,12 @@ def _collect_returns(tickers: list[str], lookback: str) -> pd.DataFrame:
 
 
 def _solve_max_return(mu: np.ndarray, cov: np.ndarray, target_var: float,
-                      max_w_risky: float, n_risky: int) -> tuple[np.ndarray, bool]:
+                      max_w_risky: float, n_risky: int,
+                      cash_ub: float = 1.0) -> tuple[np.ndarray, bool]:
     """Solve: maximize wᵀμ  s.t. wᵀΣw ≤ target_var, Σw = 1, bounds."""
     n = len(mu)  # n_risky + 1 (cash is last)
     x0 = np.full(n, 1.0 / n)
-    bounds = [(0.0, max_w_risky)] * n_risky + [(0.0, 1.0)]  # cash unbounded up to 1
+    bounds = [(0.0, max_w_risky)] * n_risky + [(0.0, cash_ub)]
     cons = [
         {"type": "eq",   "fun": lambda w: np.sum(w) - 1.0},
         {"type": "ineq", "fun": lambda w: target_var - w @ cov @ w},
@@ -51,15 +52,65 @@ def _solve_max_return(mu: np.ndarray, cov: np.ndarray, target_var: float,
 
 
 def _solve_min_var(mu: np.ndarray, cov: np.ndarray,
-                   max_w_risky: float, n_risky: int) -> np.ndarray:
+                   max_w_risky: float, n_risky: int,
+                   cash_ub: float = 1.0) -> np.ndarray:
     n = len(mu)
     x0 = np.full(n, 1.0 / n)
-    bounds = [(0.0, max_w_risky)] * n_risky + [(0.0, 1.0)]
+    bounds = [(0.0, max_w_risky)] * n_risky + [(0.0, cash_ub)]
     cons = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
     res = minimize(lambda w: float(w @ cov @ w), x0, method="SLSQP",
                    bounds=bounds, constraints=cons,
                    options={"ftol": 1e-9, "maxiter": 300})
     return res.x
+
+
+def _solve_max_sharpe(mu: np.ndarray, cov: np.ndarray, rf: float,
+                      max_w_risky: float, n_risky: int) -> np.ndarray:
+    """Tangency portfolio: maximize (wᵀμ − rf) / sqrt(wᵀΣw), risky assets only.
+
+    Uses multiple random starting points to avoid SLSQP local minima.
+    """
+    mu_r  = mu[:n_risky]
+    cov_r = cov[:n_risky, :n_risky]
+    bounds = [(0.0, max_w_risky)] * n_risky
+    cons   = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
+
+    def neg_sharpe(w):
+        vol = float(np.sqrt(w @ cov_r @ w))
+        return -(float(w @ mu_r) - rf) / vol if vol > 1e-9 else 1e6
+
+    rng = np.random.default_rng(42)
+    best_w      = np.full(n_risky, 1.0 / n_risky)
+    best_sharpe = -np.inf
+
+    # Diverse starting points: equal-weight, max-return tilt, random
+    starts = [np.full(n_risky, 1.0 / n_risky)]
+    max_ret_idx = int(np.argmax(mu_r))
+    w0 = np.full(n_risky, (1.0 - max_w_risky) / max(n_risky - 1, 1))
+    w0[max_ret_idx] = max_w_risky
+    starts.append(w0)
+    for _ in range(10):
+        w = rng.dirichlet(np.ones(n_risky))
+        w = np.clip(w, 0.0, max_w_risky)
+        w /= w.sum()
+        starts.append(w)
+
+    for x0 in starts:
+        res = minimize(neg_sharpe, x0, method="SLSQP", bounds=bounds, constraints=cons,
+                       options={"ftol": 1e-10, "maxiter": 500})
+        w = np.clip(res.x, 0.0, None)
+        s = w.sum()
+        if s < 1e-9:
+            continue
+        w /= s
+        sharpe = -neg_sharpe(w)
+        if sharpe > best_sharpe:
+            best_sharpe = sharpe
+            best_w = w
+
+    w_full = np.zeros(n_risky + 1)   # pad with 0 for cash slot
+    w_full[:n_risky] = best_w
+    return w_full
 
 
 def optimize_portfolio(
@@ -70,6 +121,7 @@ def optimize_portfolio(
     risk_free_rate: float = 0.04,
     max_weight: float = 0.40,
     frontier_samples: int = 120,
+    sharpe_hurdle: float = 1.0,
 ) -> dict[str, Any]:
     tickers = [t.strip().upper() for t in tickers if t and t.strip()]
     if len(set(tickers)) < 3:
@@ -82,21 +134,69 @@ def optimize_portfolio(
     cov_annual = returns_df.cov().values * TRADING_DAYS
     n_risky = len(used)
 
+    warnings: list[str] = []
+
+    # 1-year Sharpe ratio screen: keep only tickers with annualised Sharpe ≥ 1.0
+    # measured over the last 252 trading days (same window the dashboard shows).
+    # Using arithmetic mean for Sharpe is standard (matches the optimizer's own
+    # Sharpe computation later).  If no ticker clears the hurdle, hold 100% cash.
+    n_days     = len(returns_df)
+    screen_ret = returns_df.iloc[-min(TRADING_DAYS, n_days):]
+    sr_ann_ret = screen_ret.mean().values * TRADING_DAYS
+    sr_ann_vol = screen_ret.std().values * np.sqrt(TRADING_DAYS)
+    screen_sharpe = np.where(
+        sr_ann_vol > 1e-9,
+        (sr_ann_ret - risk_free_rate) / sr_ann_vol,
+        0.0,
+    )
+
+    kept_mask = screen_sharpe >= sharpe_hurdle
+    excluded  = [used[i] for i in range(n_risky) if not kept_mask[i]]
+
+    if excluded:
+        for t in excluded:
+            idx = used.index(t)
+            warnings.append(
+                f"{t} excluded: 1y Sharpe ratio "
+                f"({screen_sharpe[idx]:.2f}) is below hurdle ({sharpe_hurdle:.2f})"
+            )
+        if not kept_mask.any():
+            warnings.append(
+                f"No ticker clears Sharpe ≥ {sharpe_hurdle:.2f}; holding 100% cash."
+            )
+            return {
+                "allocations":     {},
+                "cash_dollars":    budget,
+                "metrics": {
+                    "expected_return": risk_free_rate,
+                    "expected_vol":    0.0,
+                    "sharpe":          0.0,
+                    "sortino":         0.0,
+                    "var_95":          0.0,
+                    "target_vol":      target_vol,
+                    "risk_free_rate":  risk_free_rate,
+                },
+                "frontier_points": [],
+                "frontier_line":   [],
+                "returns_df":      returns_df,
+                "warnings":        warnings,
+            }
+        used       = [used[i] for i in range(n_risky) if kept_mask[i]]
+        returns_df = returns_df[used]
+        mu_annual  = mu_annual[kept_mask]
+        cov_annual = returns_df.cov().values * TRADING_DAYS
+        n_risky    = len(used)
+
     mu_aug  = np.concatenate([mu_annual, [risk_free_rate]])
     cov_aug = np.zeros((n_risky + 1, n_risky + 1))
     cov_aug[:n_risky, :n_risky] = cov_annual
 
-    warnings: list[str] = []
-    target_var = target_vol ** 2
-
-    w_star, ok = _solve_max_return(mu_aug, cov_aug, target_var,
-                                   max_weight, n_risky)
-    realized_vol = float(np.sqrt(w_star @ cov_aug @ w_star))
-    if (not ok) or realized_vol > target_vol + 1e-3 or w_star[-1] > 0.99:
-        w_star = _solve_min_var(mu_aug, cov_aug, max_weight, n_risky)
-        warnings.append(
-            f"target_vol={target_vol:.3f} infeasible; fell back to min-var portfolio"
-        )
+    # All stocks cleared the Sharpe hurdle — stay 100% invested, no cash.
+    # Target-vol only matters when blending risky assets with cash on the CML;
+    # without cash it would just force a low-vol sub-optimal portfolio.
+    # Always use the max-Sharpe (tangency) portfolio: best risk-adjusted return,
+    # guaranteed to beat equal-weight on Sharpe.
+    w_star = _solve_max_sharpe(mu_aug, cov_aug, risk_free_rate, max_weight, n_risky)
 
     w_star = np.clip(w_star, 0.0, None)
     w_star = w_star / w_star.sum()

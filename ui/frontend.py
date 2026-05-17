@@ -21,6 +21,8 @@ from ui.components.optimizer_ui import (
     run_optimize,
     sync_slider_to_text,
     sync_text_to_slider,
+    sync_sr_slider_to_text,
+    sync_sr_text_to_slider,
 )
 from core import runtime
 from core import config as _cfg
@@ -138,7 +140,7 @@ def _id_from_choice(choice: str | None) -> int:
 
 
 def create_portfolio(name: str):
-    name = (name or "").strip()
+    name = (name or "").strip().upper()
     if not name:
         return gr.update(), gr.update(), "❌ Enter a portfolio name."
     db = SessionLocal()
@@ -173,7 +175,7 @@ def delete_portfolio(portfolio_id: int):
 
         choices = _portfolio_choices()
         if not choices:
-            new_p = PortfolioDB(name="Default")
+            new_p = PortfolioDB(name="DEFAULT")
             db.add(new_p)
             db.commit()
             db.refresh(new_p)
@@ -194,7 +196,7 @@ def delete_portfolio(portfolio_id: int):
 
 
 def rename_portfolio(portfolio_id: int, new_name: str):
-    new_name = (new_name or "").strip()
+    new_name = (new_name or "").strip().upper()
     if not new_name:
         return gr.update(), "❌ Enter a new name."
     db = SessionLocal()
@@ -219,14 +221,29 @@ def rename_portfolio(portfolio_id: int, new_name: str):
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
 def _watchlist_df(portfolio_id: int) -> list[list]:
-    """Return rows; CASH pinned at top. 6-col slice (no Sharpe/Sortino)."""
+    """Return rows for bought stocks; CASH pinned at top. 6-col slice + color hint."""
     full_rows = live_watchlist_rows(portfolio_id)
-    return [r[:6] for r in full_rows if not str(r[0]).startswith("Portfolio")]
+    result = []
+    for r in full_rows:
+        if str(r[0]).startswith("Portfolio"):
+            continue
+        hint = r[8] if len(r) > 8 else ""
+        result.append(r[:6] + [hint])
+    return result
+
+
+def _all_tickers(portfolio_id: int) -> list[str]:
+    """All tickers in the watchlist regardless of shares (for the remove dropdown)."""
+    with SessionLocal() as s:
+        return sorted(
+            h.ticker for h in
+            s.query(HoldingDB).filter_by(portfolio_id=portfolio_id).all()
+        )
 
 
 # ── HTML table helpers (replaces gr.Dataframe for mobile scroll support) ──────
 
-_DASH_WATCH_HEADERS     = ["Ticker", "Price", "1d %", "1mo %", "3mo %", "1y %", "Sharpe (1y)", "Sortino (1y)"]
+_DASH_WATCH_HEADERS     = ["Ticker", "Price", "1d %", "1mo %", "3mo %", "1y %", "Sharpe (ann., 1y)", "Sortino (ann., 1y)"]
 _ALLOC_HEADERS          = ["Ticker", "Weight", "Dollars", "Shares", "Price"]
 _PORTFOLIO_WATCH_HEADERS = ["Ticker", "Price", "1d %", "1mo %", "3mo %", "1y %"]
 
@@ -250,37 +267,53 @@ def _watchlist_html(rows: list[list], headers: list[str]) -> str:
     # ── Body rows ────────────────────────────────────────────────────────────
     trs = []
     for i, row in enumerate(rows):
-        label  = str(row[0]) if row else ""
-        is_opt = label.startswith("Portfolio (optimized)")
-        is_eq  = label.startswith("Portfolio (eq-wt)")
+        label      = str(row[0]) if row else ""
+        is_opt     = label.startswith("Portfolio (optimized)")
+        is_eq      = label.startswith("Portfolio (eq-wt)")
+        color_hint = str(row[n]) if len(row) > n else ""   # extra hint column
 
         row_bg = (
-            "background:#0f1a10;" if is_opt else
+            "background:#1a1800;" if is_opt else
             "background:#0d1020;" if is_eq  else
-            "background:#0d1118;" if i % 2  else ""
+            "background:rgba(0,180,80,.07);"  if color_hint == "green" else
+            "background:rgba(220,50,50,.07);" if color_hint == "red"   else
+            "background:#0d1118;" if i % 2 else ""
         )
 
         cells = []
-        for j, cell in enumerate(row):
+        for j, cell in enumerate(row[:n]):   # only render header columns
             is_ratio = ratios and j >= n - 2
 
             if is_opt and is_ratio:
-                color = "color:#00FF94;"
+                color = "color:#FFD700;"
                 extra = "font-weight:700;"
             elif is_ratio:
                 color = "color:#A78BFA;"
                 extra = ""
             elif is_opt:
-                color = "color:#00FF94;"
+                color = "color:#FFD700;"
                 extra = "font-weight:700;" if j == 0 else ""
             elif is_eq:
                 color = "color:#00D4FF;"
                 extra = ""
+            elif color_hint == "green":
+                color = "color:#4ADE80;"
+                extra = "font-weight:700;" if j == 0 else ""
+            elif color_hint == "red":
+                color = "color:#F87171;"
+                extra = "font-weight:700;" if j == 0 else ""
             else:
                 color = "color:#E5E7EB;"
                 extra = ""
 
-            content = f"<b>{cell}</b>" if (is_opt and is_ratio) else str(cell)
+            if is_opt:
+                content = f'<b><span style="color:#FFD700;">{cell}</span></b>'
+            elif color_hint == "green":
+                content = f'<span style="color:#4ADE80;">{cell}</span>' if j == 0 else str(cell)
+            elif color_hint == "red":
+                content = f'<span style="color:#F87171;">{cell}</span>' if j == 0 else str(cell)
+            else:
+                content = str(cell)
             cells.append(
                 f'<td style="{_TD_BASE}{row_bg}{color}{extra}">{content}</td>'
             )
@@ -498,7 +531,7 @@ def _portfolio_vs_spy_fig(
 
 
 def refresh_dashboard(portfolio_id: int = 1):
-    watch = live_watchlist_rows(portfolio_id)
+    watch = [r for r in live_watchlist_rows(portfolio_id) if not (len(r) > 8 and r[8] == "red")]
     vs_spy = _portfolio_vs_spy_fig(portfolio_id)
     rows, m = last_plan_rows(portfolio_id)
     watch_lbl = _date_range_label("Live watchlist")
@@ -552,8 +585,7 @@ def add_ticker(ticker: str, portfolio_id: int):
         s.add(HoldingDB(portfolio_id=portfolio_id, ticker=payload.ticker))
         s.commit()
     rows = _watchlist_df(portfolio_id)
-    tickers_for_dropdown = [r[0] for r in rows if r[0] != "CASH"]
-    dd = gr.update(choices=tickers_for_dropdown, value=None)
+    dd = gr.update(choices=_all_tickers(portfolio_id), value=None)
     return gr.update(value=""), f"✅ Added {payload.ticker}", dd, dd, _watchlist_html(rows, _PORTFOLIO_WATCH_HEADERS)
 
 
@@ -586,8 +618,7 @@ def remove_ticker(ticker: str, portfolio_id: int):
             s.delete(row)
             s.commit()
     rows = _watchlist_df(portfolio_id)
-    tickers_for_dropdown = [r[0] for r in rows if r[0] != "CASH"]
-    dd = gr.update(choices=tickers_for_dropdown, value=None)
+    dd = gr.update(choices=_all_tickers(portfolio_id), value=None)
     return f"🗑️ Removed {ticker}", _watchlist_html(rows, _PORTFOLIO_WATCH_HEADERS), dd, dd
 
 
@@ -784,8 +815,8 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                     d_budget  = gr.Textbox(label="Budget",          interactive=False)
                     d_ret     = gr.Textbox(label="Expected return",  interactive=False)
                     d_vol     = gr.Textbox(label="Expected vol",     interactive=False)
-                    d_shrp    = gr.Textbox(label="Sharpe",           interactive=False)
-                    d_sortino = gr.Textbox(label="Sortino",          interactive=False)
+                    d_shrp    = gr.Textbox(label="Sharpe (ann.)",    interactive=False)
+                    d_sortino = gr.Textbox(label="Sortino (ann.)",   interactive=False)
                     d_var     = gr.Textbox(label="VaR 95% (ann.)",   interactive=False)
                     d_cash    = gr.Textbox(label="Cash",             interactive=False)
                 dash_pie = gr.Plot(label="Allocation", min_width=400, value=_placeholder(420))
@@ -838,8 +869,7 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
 
                 def _init_watchlist(pid: int):
                     rows = _watchlist_df(pid)
-                    tickers_for_dropdown = [r[0] for r in rows if r[0] != "CASH"]
-                    dd = gr.update(choices=tickers_for_dropdown, value=None)
+                    dd = gr.update(choices=_all_tickers(pid), value=None)
                     return _watchlist_html(rows, _PORTFOLIO_WATCH_HEADERS), dd, _date_range_label("Live prices")
 
                 demo.load(
@@ -871,6 +901,15 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                                 label="…or type (e.g. 4.56%)",
                                 value="4.00%", max_lines=1,
                             )
+                        with gr.Row():
+                            opt_sr_slider = gr.Slider(
+                                label="SR screen threshold",
+                                minimum=0.0, maximum=5.0, value=1.0, step=0.1,
+                            )
+                            opt_sr_text = gr.Textbox(
+                                label="…or type (e.g. 1.5)",
+                                value="1.00", max_lines=1,
+                            )
                         opt_lookback = gr.Dropdown(
                             label="Lookback window",
                             choices=["1y", "2y", "3y", "5y"], value="2y",
@@ -885,8 +924,8 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                         with gr.Row():
                             m_ret     = gr.Textbox(label="Expected return", interactive=False)
                             m_vol     = gr.Textbox(label="Expected vol",    interactive=False)
-                            m_shrp    = gr.Textbox(label="Sharpe",          interactive=False)
-                            m_sortino = gr.Textbox(label="Sortino",         interactive=False)
+                            m_shrp    = gr.Textbox(label="Sharpe (ann.)",   interactive=False)
+                            m_sortino = gr.Textbox(label="Sortino (ann.)",  interactive=False)
                             m_var     = gr.Textbox(label="VaR 95% (ann.)",  interactive=False)
                             m_cash    = gr.Textbox(label="Cash reserve ($)", interactive=False)
                         fig_pie      = gr.Plot(label="Allocation")
@@ -903,13 +942,23 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                     inputs=[opt_rf_text, opt_rf_slider],
                     outputs=[opt_rf_slider, opt_rf_text],
                 )
+                opt_sr_slider.change(
+                    sync_sr_slider_to_text,
+                    inputs=[opt_sr_slider], outputs=[opt_sr_text],
+                )
+                opt_sr_text.submit(
+                    sync_sr_text_to_slider,
+                    inputs=[opt_sr_text, opt_sr_slider],
+                    outputs=[opt_sr_slider, opt_sr_text],
+                )
                 opt_btn.click(
                     run_optimize,
                     inputs=[opt_budget, opt_target_vol, opt_rf_text,
-                            opt_lookback, opt_frontier, portfolio_state],
+                            opt_lookback, opt_frontier, portfolio_state, opt_sr_text],
                     outputs=[opt_status, m_ret, m_vol, m_shrp,
                              m_sortino, m_var, m_cash,
-                             fig_pie, fig_bar, fig_frontier, opt_commentary]
+                             fig_pie, fig_bar, fig_frontier, opt_commentary,
+                             opt_target_vol]
                             + _dash_outs,
                 ).then(
                     _init_watchlist,

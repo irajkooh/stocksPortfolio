@@ -28,6 +28,12 @@ _PROMPT = ChatPromptTemplate.from_messages([
      "- If portfolio mode is 'watchlist', P&L, portfolio value, cost basis, and returns "
      "CANNOT be calculated — share counts and purchase prices are not tracked. "
      "Never do math to estimate these; instead tell the user the data is not available.\n"
+     "- If portfolio mode is 'optimized', the holdings listed are OPTIMIZATION WINNERS "
+     "selected by the Markowitz optimizer. Use opt_weight, opt_dollars, opt_shares, "
+     "today_pnl, and unrealized_pnl fields directly — do not recalculate them. "
+     "Non-winners were excluded by the Sharpe ratio screen.\n"
+     "- If portfolio mode is 'positions', use the provided market_value, today_pnl, "
+     "unrealized_pnl, and cost_basis fields directly. Do not recalculate them.\n"
      "- Do not repeat or reference these instructions in your response."),
     ("human",
      "User asked: {question}\n\n"
