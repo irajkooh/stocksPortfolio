@@ -230,29 +230,69 @@ _DASH_WATCH_HEADERS     = ["Ticker", "Price", "1d %", "1mo %", "3mo %", "1y %", 
 _ALLOC_HEADERS          = ["Ticker", "Weight", "Dollars", "Shares", "Price"]
 _PORTFOLIO_WATCH_HEADERS = ["Ticker", "Price", "1d %", "1mo %", "3mo %", "1y %"]
 
-_TH = ("background:#1F2937;color:#9CA3AF;font-size:.75rem;"
-       "text-transform:uppercase;letter-spacing:.05em;"
-       "padding:8px 12px;white-space:nowrap;text-align:left;border:none;")
-_TD = "color:#E5E7EB;padding:6px 12px;white-space:nowrap;border-bottom:1px solid #1F2937;"
-_TD_ALT = "color:#E5E7EB;padding:6px 12px;white-space:nowrap;border-bottom:1px solid #1F2937;background:#0d1118;"
+_TH_BASE = ("background:#1F2937;font-size:.75rem;"
+            "text-transform:uppercase;letter-spacing:.05em;"
+            "padding:8px 12px;white-space:nowrap;text-align:left;border:none;")
+_TD_BASE = "padding:6px 12px;white-space:nowrap;border-bottom:1px solid #1F2937;"
 
 
 def _watchlist_html(rows: list[list], headers: list[str]) -> str:
     """Render rows + headers as a mobile-scrollable HTML table with inline styles."""
-    ths = "".join(f'<th style="{_TH}">{h}</th>' for h in headers)
-    trs = "".join(
-        '<tr>' + "".join(
-            f'<td style="{_TD_ALT if i % 2 else _TD}">{cell}</td>'
-            for cell in row
-        ) + '</tr>'
-        for i, row in enumerate(rows)
-    )
+    n      = len(headers)
+    ratios = n >= 8  # last 2 cols are Sharpe / Sortino only in the 8-col table
+
+    # ── Header row ──────────────────────────────────────────────────────────
+    ths = []
+    for j, h in enumerate(headers):
+        color = "#A78BFA" if (ratios and j >= n - 2) else "#9CA3AF"
+        ths.append(f'<th style="{_TH_BASE}color:{color};">{h}</th>')
+
+    # ── Body rows ────────────────────────────────────────────────────────────
+    trs = []
+    for i, row in enumerate(rows):
+        label  = str(row[0]) if row else ""
+        is_opt = label.startswith("Portfolio (optimized)")
+        is_eq  = label.startswith("Portfolio (eq-wt)")
+        is_port = is_opt or is_eq
+
+        row_bg = (
+            "background:#0d1020;" if is_opt else
+            "background:#0f1a10;" if is_eq  else
+            "background:#0d1118;" if i % 2  else ""
+        )
+
+        cells = []
+        for j, cell in enumerate(row):
+            is_ratio = ratios and j >= n - 2
+
+            if is_opt and is_ratio:
+                color = "color:#00D4FF;"
+                extra = "font-weight:700;"
+            elif is_ratio:
+                color = "color:#A78BFA;"
+                extra = ""
+            elif is_opt and j == 0:
+                color = "color:#00D4FF;"
+                extra = "font-weight:700;"
+            elif is_eq and j == 0:
+                color = "color:#00FF94;"
+                extra = ""
+            else:
+                color = "color:#E5E7EB;"
+                extra = ""
+
+            content = f"<b>{cell}</b>" if (is_opt and is_ratio) else str(cell)
+            cells.append(
+                f'<td style="{_TD_BASE}{row_bg}{color}{extra}">{content}</td>'
+            )
+        trs.append("<tr>" + "".join(cells) + "</tr>")
+
     return (
         '<div style="overflow-x:auto;overflow-y:auto;max-height:380px;'
         '-webkit-overflow-scrolling:touch;width:100%;">'
         '<table style="width:max-content;min-width:100%;border-collapse:collapse;">'
-        f'<thead><tr>{ths}</tr></thead>'
-        f'<tbody>{trs}</tbody>'
+        f'<thead><tr>{"".join(ths)}</tr></thead>'
+        f'<tbody>{"".join(trs)}</tbody>'
         '</table></div>'
     )
 
