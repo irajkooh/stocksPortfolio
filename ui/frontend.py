@@ -359,6 +359,7 @@ def _portfolio_vs_spy_fig(
         paper_bgcolor="#0A0E1A",
         plot_bgcolor="#111827",
         xaxis_title="Date",
+        xaxis_range=[str(date.today() - timedelta(days=365)), str(date.today())],
         yaxis_title="Normalized (start=100)",
         legend=dict(orientation="h", y=-0.2),
         height=460,
