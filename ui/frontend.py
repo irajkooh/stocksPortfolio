@@ -256,8 +256,8 @@ def _watchlist_html(rows: list[list], headers: list[str]) -> str:
         is_port = is_opt or is_eq
 
         row_bg = (
-            "background:#0d1020;" if is_opt else
-            "background:#0f1a10;" if is_eq  else
+            "background:#0f1a10;" if is_opt else
+            "background:#0d1020;" if is_eq  else
             "background:#0d1118;" if i % 2  else ""
         )
 
@@ -266,16 +266,16 @@ def _watchlist_html(rows: list[list], headers: list[str]) -> str:
             is_ratio = ratios and j >= n - 2
 
             if is_opt and is_ratio:
-                color = "color:#00D4FF;"
+                color = "color:#00FF94;"
                 extra = "font-weight:700;"
             elif is_ratio:
                 color = "color:#A78BFA;"
                 extra = ""
             elif is_opt:
-                color = "color:#00D4FF;"
+                color = "color:#00FF94;"
                 extra = "font-weight:700;" if j == 0 else ""
             elif is_eq:
-                color = "color:#00FF94;"
+                color = "color:#00D4FF;"
                 extra = ""
             else:
                 color = "color:#E5E7EB;"
