@@ -119,8 +119,6 @@ def live_watchlist_rows(portfolio_id: int) -> list[list]:
         opt_3mo += cash_w * cash_3mo * 100
         opt_1y  += cash_w * cash_1y  * 100
 
-        # Use stored optimizer values — computed from the optimizer's lookback window,
-        # matching what the Optimizer tab displays.
         o_sharpe  = round(float(alloc_row.sharpe  or 0.0), 2)
         o_sortino = round(float(alloc_row.sortino or 0.0), 2)
 
@@ -165,6 +163,9 @@ def last_plan_rows(portfolio_id: int) -> tuple[list[list], dict | None]:
                 rets = hist["Close"].pct_change().dropna().values
                 sharpe_map[ticker], _ = _stock_ratios(rets, rf)
 
+        port_sharpe  = round(float(row.sharpe  or 0.0), 2)
+        port_sortino = round(float(row.sortino or 0.0), 2)
+
         rows = []
         for ticker, v in allocs.items():
             rows.append([ticker,
@@ -179,8 +180,8 @@ def last_plan_rows(portfolio_id: int) -> tuple[list[list], dict | None]:
             "budget":          row.budget,
             "expected_return": row.expected_return,
             "expected_vol":    row.expected_vol,
-            "sharpe":          row.sharpe,
-            "sortino":         row.sortino,
+            "sharpe":          port_sharpe,
+            "sortino":         port_sortino,
             "var_95":          row.var_95,
             "cash_dollars":    row.cash_dollars,
             "created_at":      row.created_at,

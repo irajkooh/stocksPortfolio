@@ -39,8 +39,16 @@ def _solve_max_return(mu: np.ndarray, cov: np.ndarray, target_var: float,
                       cash_ub: float = 1.0) -> tuple[np.ndarray, bool]:
     """Solve: maximize wᵀμ  s.t. wᵀΣw ≤ target_var, Σw = 1, bounds."""
     n = len(mu)  # n_risky + 1 (cash is last)
-    x0 = np.full(n, 1.0 / n)
     bounds = [(0.0, max_w_risky)] * n_risky + [(0.0, cash_ub)]
+
+    # Build a feasible starting point: equal-weight risky, cash = min(cash_ub, 0).
+    # This avoids the SLSQP failure that occurs when the initial point violates
+    # the cash bound — scipy clips x0 to bounds before the first step, leaving
+    # risky weights < 1 and violating the equality constraint, causing divergence.
+    x0 = np.zeros(n)
+    x0[:n_risky] = 1.0 / n_risky
+    x0[-1] = 0.0  # cash starts at 0 regardless of cash_ub
+
     cons = [
         {"type": "eq",   "fun": lambda w: np.sum(w) - 1.0},
         {"type": "ineq", "fun": lambda w: target_var - w @ cov @ w},
@@ -48,7 +56,12 @@ def _solve_max_return(mu: np.ndarray, cov: np.ndarray, target_var: float,
     res = minimize(lambda w: -float(w @ mu), x0, method="SLSQP",
                    bounds=bounds, constraints=cons,
                    options={"ftol": 1e-9, "maxiter": 300})
-    return res.x, res.success
+    # Accept result if solver succeeded OR if constraint violation is negligible
+    feasible = (
+        abs(np.sum(res.x) - 1.0) < 1e-4 and
+        float(res.x @ cov @ res.x) <= target_var + 1e-6
+    )
+    return res.x, res.success or feasible
 
 
 def _solve_min_var(mu: np.ndarray, cov: np.ndarray,
@@ -122,6 +135,7 @@ def optimize_portfolio(
     max_weight: float = 0.40,
     frontier_samples: int = 120,
     sharpe_hurdle: float = 1.0,
+    force_target_vol: bool = False,
 ) -> dict[str, Any]:
     tickers = [t.strip().upper() for t in tickers if t and t.strip()]
     if len(set(tickers)) < 3:
@@ -191,31 +205,49 @@ def optimize_portfolio(
     cov_aug = np.zeros((n_risky + 1, n_risky + 1))
     cov_aug[:n_risky, :n_risky] = cov_annual
 
-    # All stocks cleared the Sharpe hurdle — stay 100% invested, no cash.
-    # Target-vol only matters when blending risky assets with cash on the CML;
-    # without cash it would just force a low-vol sub-optimal portfolio.
-    # Always use the max-Sharpe (tangency) portfolio: best risk-adjusted return,
-    # guaranteed to beat equal-weight on Sharpe.
-    w_star = _solve_max_sharpe(mu_aug, cov_aug, risk_free_rate, max_weight, n_risky)
+    if force_target_vol and target_vol > 0:
+        # CML path: mix max-Sharpe portfolio with cash to hit exactly target_vol.
+        # ratio = target_vol / vol_ms scales all risky weights; cash gets 1-ratio.
+        # This is always feasible (no solver), produces distinct allocations for
+        # every target_vol, and lies exactly on the Capital Market Line.
+        w_ms = _solve_max_sharpe(mu_aug, cov_aug, risk_free_rate, max_weight, n_risky)
+        vol_ms = float(np.sqrt(w_ms @ cov_aug @ w_ms))
+        if vol_ms > 1e-9 and target_vol < vol_ms - 1e-6:
+            ratio = target_vol / vol_ms
+            w_star = np.zeros_like(w_ms)
+            w_star[:n_risky] = w_ms[:n_risky] * ratio
+            w_star[-1] = 1.0 - ratio  # cash portion
+        else:
+            # target_vol >= max-Sharpe vol: no leverage available, use max-Sharpe
+            w_star = w_ms
+    else:
+        # Regular Optimize button: always use the max-Sharpe (tangency) portfolio.
+        w_star = _solve_max_sharpe(mu_aug, cov_aug, risk_free_rate, max_weight, n_risky)
 
     w_star = np.clip(w_star, 0.0, None)
     w_star = w_star / w_star.sum()
 
     exp_ret = float(w_star @ mu_aug)
     exp_vol = float(np.sqrt(w_star @ cov_aug @ w_star))
-    sharpe  = (exp_ret - risk_free_rate) / exp_vol if exp_vol > 1e-9 else 0.0
 
-    # Realized portfolio daily returns (cash leg contributes its deterministic
-    # rf/252 daily yield) — used for downside-only Sortino and historical VaR.
-    risky_w     = w_star[:n_risky]
-    cash_w      = float(w_star[-1])
-    port_daily  = returns_df.values @ risky_w + cash_w * (risk_free_rate / TRADING_DAYS)
-    neg         = port_daily[port_daily < 0]
-    downside_ann = float(neg.std() * np.sqrt(TRADING_DAYS)) if len(neg) > 1 else 0.0
-    sortino     = (exp_ret - risk_free_rate) / downside_ann if downside_ann > 1e-9 else 0.0
+    risky_w    = w_star[:n_risky]
+    cash_w     = float(w_star[-1])
+    port_daily = returns_df.values @ risky_w + cash_w * (risk_free_rate / TRADING_DAYS)
+
     # 95% historical 1-day VaR scaled to annual via sqrt-of-time. Stored as a
     # positive magnitude (e.g. 0.18 = "5% chance of losing >18% over a year").
-    var_95      = float(-np.percentile(port_daily, 5) * np.sqrt(TRADING_DAYS))
+    var_95 = float(-np.percentile(port_daily, 5) * np.sqrt(TRADING_DAYS))
+
+    # Sharpe and Sortino always reported over the trailing 1-year window so the
+    # displayed ratios are comparable across different lookback settings.
+    n_1y         = min(TRADING_DAYS, len(returns_df))
+    port_1y      = port_daily[-n_1y:]
+    ann_ret_1y   = float(port_1y.mean() * TRADING_DAYS)
+    ann_vol_1y   = float(port_1y.std()  * np.sqrt(TRADING_DAYS))
+    sharpe       = (ann_ret_1y - risk_free_rate) / ann_vol_1y if ann_vol_1y > 1e-9 else 0.0
+    neg_1y       = port_1y[port_1y < 0]
+    down_ann_1y  = float(neg_1y.std() * np.sqrt(TRADING_DAYS)) if len(neg_1y) > 1 else 0.0
+    sortino      = (ann_ret_1y - risk_free_rate) / down_ann_1y if down_ann_1y > 1e-9 else 0.0
 
     allocations: dict[str, dict[str, float]] = {}
     for i, t in enumerate(used):
@@ -365,14 +397,21 @@ def build_plots(result: dict[str, Any]) -> tuple[go.Figure, go.Figure, go.Figure
     rets   = [p["return"]           for p in pts]
     sharps = [p.get("sharpe", 0.0)  for p in pts]
 
+    hover_text = [
+        f"Vol: {v*100:.2f}%<br>Return: {r*100:.2f}%<br>Sharpe: {s:.3f}<br><i>Click to optimize here</i>"
+        for v, r, s in zip(vols, rets, sharps)
+    ]
     fig_f = go.Figure(go.Scatter(
         x=vols, y=rets, mode="markers",
         marker=dict(
-            size=4, opacity=0.7,
+            size=8, opacity=0.75,
             color=sharps, colorscale="Viridis",
             colorbar=dict(title="Sharpe Ratio", thickness=15, len=0.8),
+            line=dict(width=0),
         ),
         name="Portfolios",
+        text=hover_text,
+        hovertemplate="%{text}<extra></extra>",
     ))
 
     # Red dashed efficient frontier curve
@@ -416,6 +455,7 @@ def build_plots(result: dict[str, Any]) -> tuple[go.Figure, go.Figure, go.Figure
 
 def save_allocation(portfolio_id: int, result: dict[str, Any],
                     budget: float, target_vol: float, lookback: str,
+                    frontier_samples: int = 5_000, sr_threshold: float = 1.0,
                     commentary: str = "") -> None:
     """Persist (overwrite) the single allocation row for this portfolio."""
     from datetime import datetime as _dt
@@ -441,6 +481,8 @@ def save_allocation(portfolio_id: int, result: dict[str, Any],
         row.cash_dollars     = float(result["cash_dollars"])
         row.allocations_json = payload
         row.frontier_json    = frontier_payload
+        row.frontier_samples = int(frontier_samples)
+        row.sr_threshold     = float(sr_threshold)
         row.commentary       = commentary
         row.created_at       = _dt.utcnow()
         s.commit()

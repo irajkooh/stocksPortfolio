@@ -693,15 +693,15 @@ def _load_saved_optimizer(pid: int) -> tuple:
                 "", "", None, None, None, "",
             ) + _defaults
         allocs_json      = row.allocations_json
-        frontier_json    = row.frontier_json or "[]"
+        frontier_json    = getattr(row, 'frontier_json', None) or "[]"
         cash_dollars     = row.cash_dollars
-        commentary       = row.commentary or ""
+        commentary       = getattr(row, 'commentary', None) or ""
         budget           = row.budget
         target_vol_pct   = row.target_vol * 100.0
         rf_pct           = row.risk_free_rate * 100.0
         lookback         = row.lookback
-        frontier_samples = int(row.frontier_samples or 5_000)
-        sr_threshold     = float(row.sr_threshold or 1.0)
+        frontier_samples = int(getattr(row, 'frontier_samples', None) or 5_000)
+        sr_threshold     = float(getattr(row, 'sr_threshold', None) or 1.0)
         created_at       = row.created_at
         metrics = {
             "expected_return": row.expected_return,

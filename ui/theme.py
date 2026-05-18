@@ -61,6 +61,9 @@ CUSTOM_CSS = """
 .gradio-container { background: #0A0E1A !important; }
 body { background: #0A0E1A !important; }
 
+/* ── Hidden JS-bridge textbox (frontier click) ─────────── */
+#frontier-click-data { display: none !important; }
+
 /* ── Header gradient text ──────────────────────────────── */
 .app-title {
     background: linear-gradient(135deg, #00D4FF, #7B2FBE);

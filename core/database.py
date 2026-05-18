@@ -39,6 +39,12 @@ def _maybe_migrate() -> None:
                 conn.execute(text("ALTER TABLE portfolio_allocations ADD COLUMN sortino REAL"))
             if "var_95" not in alloc_cols:
                 conn.execute(text("ALTER TABLE portfolio_allocations ADD COLUMN var_95 REAL"))
+            if "frontier_samples" not in alloc_cols:
+                conn.execute(text("ALTER TABLE portfolio_allocations ADD COLUMN frontier_samples INTEGER DEFAULT 5000"))
+            if "sr_threshold" not in alloc_cols:
+                conn.execute(text("ALTER TABLE portfolio_allocations ADD COLUMN sr_threshold REAL DEFAULT 1.0"))
+            if "commentary" not in alloc_cols:
+                conn.execute(text("ALTER TABLE portfolio_allocations ADD COLUMN commentary TEXT DEFAULT ''"))
 
 
 def _ensure_default_portfolio() -> None:

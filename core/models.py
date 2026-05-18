@@ -63,6 +63,8 @@ class PortfolioAllocationDB(Base):
     cash_dollars     = Column(Float, nullable=False)
     allocations_json = Column(Text, nullable=False)
     frontier_json    = Column(Text, default="[]")
+    frontier_samples = Column(Integer, default=5_000)
+    sr_threshold     = Column(Float,   default=1.0)
     commentary       = Column(Text, default="")
     created_at       = Column(DateTime, default=datetime.utcnow)
 
