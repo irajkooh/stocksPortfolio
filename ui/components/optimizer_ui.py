@@ -115,9 +115,8 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
         rows, m = last_plan_rows(portfolio_id)
         if m is None:
             return (_watchlist_html(watch, _watch_headers()),) + _DASH_EMPTY
-        opt_date_raw  = m.get("opt_date") or saved_at.strftime("%Y-%m-%d")
-        opt_date_compact = opt_date_raw[:10]   # "YYYY-MM-DD" for compact labels
-        vs_spy = _portfolio_vs_spy_fig(portfolio_id, opt_date_override=pd.Timestamp(opt_date_compact))
+        opt_date_raw  = m.get("opt_date") or saved_at.strftime("%Y-%m-%d %Z")
+        vs_spy = _portfolio_vs_spy_fig(portfolio_id, opt_date_override=pd.Timestamp(opt_date_raw[:10]))
         sortino_s = f"{m['sortino']:.3f}" if m.get("sortino") is not None else "—"
         var_s     = f"{m['var_95']*100:.2f}%" if m.get("var_95") is not None else "—"
         return (
@@ -125,8 +124,8 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
             f"${m['budget']:,.0f}",
             f"{m['expected_return']*100:.2f}%",
             f"{m['expected_vol']*100:.2f}%",
-            gr.update(value=f"{m['sharpe']:.3f}", label=f"Sharpe (ann.)\nat {opt_date_compact}"),
-            gr.update(value=sortino_s, label=f"Sortino (ann.)\nat {opt_date_compact}"),
+            gr.update(value=f"{m['sharpe']:.3f}", label=f"Sharpe (ann.)\nat {opt_date_raw}"),
+            gr.update(value=sortino_s, label=f"Sortino (ann.)\nat {opt_date_raw}"),
             var_s,
             f"${m['cash_dollars']:,.0f}",
             last_plan_pie(portfolio_id),
@@ -206,7 +205,7 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
     sharpe_s  = f"{m['sharpe']:.3f}"
     sortino_s = f"{m['sortino']:.3f}" if m.get("sortino") is not None else "—"
     var_s = f"{m['var_95']*100:.2f}%" if m.get("var_95") is not None else "—"
-    opt_date_str = _dt.now().astimezone().strftime("%Y-%m-%d")
+    opt_date_str = _dt.now().astimezone().strftime("%Y-%m-%d %Z")
     out = (
         "✅ Optimized",
         f"{m['expected_return']*100:.2f}%",
