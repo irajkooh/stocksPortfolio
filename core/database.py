@@ -47,6 +47,12 @@ def _maybe_migrate() -> None:
                 conn.execute(text("ALTER TABLE portfolio_allocations ADD COLUMN commentary TEXT DEFAULT ''"))
             if "opt_date" not in alloc_cols:
                 conn.execute(text("ALTER TABLE portfolio_allocations ADD COLUMN opt_date TEXT"))
+        # Backfill NULL opt_date rows using created_at (UTC label for old records)
+        with engine.begin() as conn:
+            conn.execute(text(
+                "UPDATE portfolio_allocations SET opt_date = strftime('%Y-%m-%d', created_at) || ' UTC'"
+                " WHERE opt_date IS NULL AND created_at IS NOT NULL"
+            ))
 
 
 def _ensure_default_portfolio() -> None:

@@ -178,7 +178,7 @@ def last_plan_rows(portfolio_id: int) -> tuple[list[list], dict | None]:
                         f"${row.cash_dollars:,.0f}", "—", "$1.00"])
         opt_date = (
             row.opt_date
-            or (row.created_at.strftime("%Y-%m-%d") if row.created_at else None)
+            or (row.created_at.strftime("%Y-%m-%d UTC") if row.created_at else None)
         )
         metrics = {
             "budget":          row.budget,

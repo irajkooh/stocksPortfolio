@@ -724,7 +724,7 @@ def _load_saved_optimizer(pid: int) -> tuple:
     sortino_s    = f"{metrics['sortino']:.3f}" if metrics.get("sortino") is not None else "—"
     var_s        = f"{metrics['var_95']*100:.2f}%" if metrics.get("var_95") is not None else "—"
     opt_date_str = getattr(row, "opt_date", None) or (
-        created_at.strftime("%Y-%m-%d") if created_at else "unknown"
+        created_at.strftime("%Y-%m-%d UTC") if created_at else "unknown"
     )
     return (
         "✅ Last saved",
