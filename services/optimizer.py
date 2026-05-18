@@ -484,5 +484,5 @@ def save_allocation(portfolio_id: int, result: dict[str, Any],
         row.frontier_samples = int(frontier_samples)
         row.sr_threshold     = float(sr_threshold)
         row.commentary       = commentary
-        row.created_at       = _dt.now()
+        row.created_at       = _dt.utcnow()
         s.commit()

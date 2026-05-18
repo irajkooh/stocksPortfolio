@@ -723,7 +723,12 @@ def _load_saved_optimizer(pid: int) -> tuple:
     fig_p, fig_b, fig_f = build_plots(result)
     sortino_s    = f"{metrics['sortino']:.3f}" if metrics.get("sortino") is not None else "—"
     var_s        = f"{metrics['var_95']*100:.2f}%" if metrics.get("var_95") is not None else "—"
-    opt_date_str = created_at.strftime("%Y-%m-%d") if created_at else "unknown"
+    if created_at:
+        from datetime import datetime as _dt
+        _utc_off = _dt.now() - _dt.utcnow()
+        opt_date_str = (created_at + _utc_off).strftime("%Y-%m-%d")
+    else:
+        opt_date_str = "unknown"
     return (
         "✅ Last saved",
         f"{metrics['expected_return']*100:.2f}%",

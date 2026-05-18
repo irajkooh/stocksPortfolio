@@ -176,6 +176,8 @@ def last_plan_rows(portfolio_id: int) -> tuple[list[list], dict | None]:
         rows.sort(key=lambda r: sharpe_map.get(r[0], 0.0), reverse=True)
         rows.insert(0, ["CASH", f"{(row.cash_dollars/row.budget)*100:.2f}%",
                         f"${row.cash_dollars:,.0f}", "—", "$1.00"])
+        from datetime import datetime as _dt
+        _utc_off = _dt.now() - _dt.utcnow()
         metrics = {
             "budget":          row.budget,
             "expected_return": row.expected_return,
@@ -184,7 +186,7 @@ def last_plan_rows(portfolio_id: int) -> tuple[list[list], dict | None]:
             "sortino":         port_sortino,
             "var_95":          row.var_95,
             "cash_dollars":    row.cash_dollars,
-            "created_at":      row.created_at,
+            "created_at":      (row.created_at + _utc_off) if row.created_at else None,
         }
         return rows, metrics
 
