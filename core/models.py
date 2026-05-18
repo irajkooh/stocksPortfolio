@@ -67,6 +67,7 @@ class PortfolioAllocationDB(Base):
     sr_threshold     = Column(Float,   default=1.0)
     commentary       = Column(Text, default="")
     created_at       = Column(DateTime, default=datetime.utcnow)
+    opt_date         = Column(String(10), nullable=True)   # "YYYY-MM-DD" local date, immutable
 
     portfolio        = relationship("PortfolioDB", back_populates="allocation")
 

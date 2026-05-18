@@ -551,21 +551,22 @@ def refresh_dashboard(portfolio_id: int = 1):
                 "—", "—", _placeholder(420),
                 _watchlist_html([], _ALLOC_HEADERS),
                 "_Run the Optimizer to see your plan._", vs_spy, watch_lbl, spy_lbl)
-    sortino_s    = f"{m['sortino']:.3f}" if m.get("sortino") is not None else "—"
-    var_s        = f"{m['var_95']*100:.2f}%" if m.get("var_95") is not None else "—"
-    opt_date_str = m["created_at"].strftime("%Y-%m-%d")
+    sortino_s      = f"{m['sortino']:.3f}" if m.get("sortino") is not None else "—"
+    var_s          = f"{m['var_95']*100:.2f}%" if m.get("var_95") is not None else "—"
+    opt_date_raw   = m.get("opt_date") or "unknown"
+    opt_date_compact = opt_date_raw[:10]
     return (
         _watchlist_html(watch, _watch_headers()),
         f"${m['budget']:,.0f}",
         f"{m['expected_return']*100:.2f}%",
         f"{m['expected_vol']*100:.2f}%",
-        gr.update(value=f"{m['sharpe']:.3f}", label=f"Sharpe (ann.)\nat {opt_date_str}"),
-        gr.update(value=sortino_s,            label=f"Sortino (ann.)\nat {opt_date_str}"),
+        gr.update(value=f"{m['sharpe']:.3f}", label=f"Sharpe (ann.)\nat {opt_date_compact}"),
+        gr.update(value=sortino_s,            label=f"Sortino (ann.)\nat {opt_date_compact}"),
         var_s,
         f"${m['cash_dollars']:,.0f}",
         last_plan_pie(portfolio_id),
         _watchlist_html(rows, _ALLOC_HEADERS),
-        f"_Last optimized: {m['created_at'].strftime('%Y-%m-%d %H:%M:%S')}_",
+        f"_Last optimized: {opt_date_raw}_",
         vs_spy,
         watch_lbl,
         spy_lbl,
@@ -723,12 +724,10 @@ def _load_saved_optimizer(pid: int) -> tuple:
     fig_p, fig_b, fig_f = build_plots(result)
     sortino_s    = f"{metrics['sortino']:.3f}" if metrics.get("sortino") is not None else "—"
     var_s        = f"{metrics['var_95']*100:.2f}%" if metrics.get("var_95") is not None else "—"
-    if created_at:
-        from datetime import datetime as _dt
-        _utc_off = _dt.now() - _dt.utcnow()
-        opt_date_str = (created_at + _utc_off).strftime("%Y-%m-%d")
-    else:
-        opt_date_str = "unknown"
+    opt_date_raw = getattr(row, "opt_date", None) or (
+        created_at.strftime("%Y-%m-%d") if created_at else "unknown"
+    )
+    opt_date_str = opt_date_raw[:10]
     return (
         "✅ Last saved",
         f"{metrics['expected_return']*100:.2f}%",

@@ -485,4 +485,5 @@ def save_allocation(portfolio_id: int, result: dict[str, Any],
         row.sr_threshold     = float(sr_threshold)
         row.commentary       = commentary
         row.created_at       = _dt.utcnow()
+        row.opt_date         = _dt.now().astimezone().strftime("%Y-%m-%d %Z")
         s.commit()

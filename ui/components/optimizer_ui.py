@@ -110,18 +110,14 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
 
     def _dash_outputs(saved_at):
         from ui.frontend import _portfolio_vs_spy_fig, _watchlist_html, _watch_headers, _ALLOC_HEADERS
-        from datetime import datetime as _dt_loc
         import pandas as pd
-        _utc_off = _dt_loc.now() - _dt_loc.utcnow()
         watch = [r for r in live_watchlist_rows(portfolio_id) if not (len(r) > 8 and r[8] == "red")]
         rows, m = last_plan_rows(portfolio_id)
         if m is None:
             return (_watchlist_html(watch, _watch_headers()),) + _DASH_EMPTY
-        # m["created_at"] is already local (converted in last_plan_rows);
-        # fall back to saved_at (UTC) shifted to local when the DB has no timestamp.
-        stored_at    = m["created_at"] or (saved_at + _utc_off)
-        opt_date_str = stored_at.strftime("%Y-%m-%d")
-        vs_spy = _portfolio_vs_spy_fig(portfolio_id, opt_date_override=pd.Timestamp(stored_at.date()))
+        opt_date_raw  = m.get("opt_date") or saved_at.strftime("%Y-%m-%d")
+        opt_date_compact = opt_date_raw[:10]   # "YYYY-MM-DD" for compact labels
+        vs_spy = _portfolio_vs_spy_fig(portfolio_id, opt_date_override=pd.Timestamp(opt_date_compact))
         sortino_s = f"{m['sortino']:.3f}" if m.get("sortino") is not None else "—"
         var_s     = f"{m['var_95']*100:.2f}%" if m.get("var_95") is not None else "—"
         return (
@@ -129,13 +125,13 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
             f"${m['budget']:,.0f}",
             f"{m['expected_return']*100:.2f}%",
             f"{m['expected_vol']*100:.2f}%",
-            gr.update(value=f"{m['sharpe']:.3f}", label=f"Sharpe (ann.)\nat {opt_date_str}"),
-            gr.update(value=sortino_s, label=f"Sortino (ann.)\nat {opt_date_str}"),
+            gr.update(value=f"{m['sharpe']:.3f}", label=f"Sharpe (ann.)\nat {opt_date_compact}"),
+            gr.update(value=sortino_s, label=f"Sortino (ann.)\nat {opt_date_compact}"),
             var_s,
             f"${m['cash_dollars']:,.0f}",
             last_plan_pie(portfolio_id),
             _watchlist_html(rows, _ALLOC_HEADERS),
-            f"_Last optimized: {stored_at.strftime('%Y-%m-%d %H:%M:%S')}_",
+            f"_Last optimized: {opt_date_raw}_",
             vs_spy,
             gr.update(),  # watch_label — preserve existing value
             gr.update(),  # spy_label — preserve existing value
@@ -210,8 +206,7 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
     sharpe_s  = f"{m['sharpe']:.3f}"
     sortino_s = f"{m['sortino']:.3f}" if m.get("sortino") is not None else "—"
     var_s = f"{m['var_95']*100:.2f}%" if m.get("var_95") is not None else "—"
-    _utc_off = _dt.now() - _dt.utcnow()
-    opt_date_str = (saved_at + _utc_off).strftime("%Y-%m-%d")
+    opt_date_str = _dt.now().astimezone().strftime("%Y-%m-%d")
     out = (
         "✅ Optimized",
         f"{m['expected_return']*100:.2f}%",

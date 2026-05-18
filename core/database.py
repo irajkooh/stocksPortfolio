@@ -45,6 +45,8 @@ def _maybe_migrate() -> None:
                 conn.execute(text("ALTER TABLE portfolio_allocations ADD COLUMN sr_threshold REAL DEFAULT 1.0"))
             if "commentary" not in alloc_cols:
                 conn.execute(text("ALTER TABLE portfolio_allocations ADD COLUMN commentary TEXT DEFAULT ''"))
+            if "opt_date" not in alloc_cols:
+                conn.execute(text("ALTER TABLE portfolio_allocations ADD COLUMN opt_date TEXT"))
 
 
 def _ensure_default_portfolio() -> None:
