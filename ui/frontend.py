@@ -250,7 +250,7 @@ _ALLOC_HEADERS = ["Ticker", "Weight", "Dollars", "Shares", "Price"]
 def _watch_headers() -> list[str]:
     """Return watchlist column headers with today's date on the live ratio columns."""
     import datetime
-    today = datetime.date.today().strftime("%Y-%m-%d")
+    today = datetime.datetime.now().astimezone().strftime("%Y-%m-%d %Z")
     return ["Ticker", "Price", "1d %", "1mo %", "3mo %", "1y %",
             f"Sharpe (ann., 1y)<br>at {today}", f"Sortino (ann., 1y)<br>at {today}"]
 
