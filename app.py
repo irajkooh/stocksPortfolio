@@ -399,6 +399,106 @@ def main() -> None:
 
     document.addEventListener('touchend', function() { _el = null; }, { passive: true });
   })();
+
+  // ── Efficient-frontier click → Gradio hidden-button bridge ──────────────
+  // gr.Plot has no .select() in Gradio 6.x.  We poll every 500 ms for the
+  // Plotly div that holds the frontier chart (identified by its "Portfolios"
+  // trace), attach a plotly_click handler that:
+  //   1. writes "vol,ret,ts" into #frontier-click-data textarea (Svelte state sync)
+  //   2. clicks the hidden #frontier-trigger-btn button after a short delay
+  // Triggering a gr.Button click is more reliable than dispatching textarea
+  // change events — it works identically on Gradio 6.8 and 6.9 / HF Space.
+  // Guard prevents double-execution when both js= and head= paths fire.
+  (function() {
+    if (window.__frontierBridgeInstalled) return;
+    window.__frontierBridgeInstalled = true;
+
+    var _frontierPd  = null;   // currently-wired Plotly div
+    var _frontierFn  = null;   // currently-wired handler function
+
+    function findTextarea() {
+      return document.querySelector('#frontier-click-data textarea')
+          || document.querySelector('[id$="frontier-click-data"] textarea');
+    }
+
+    function findTriggerBtn() {
+      return document.querySelector('#frontier-trigger-btn button');
+    }
+
+    function isFrontierPlot(pd) {
+      try {
+        if ((pd.data || []).some(function(t) { return t.name === 'Portfolios'; })) return true;
+        var layout = pd._fullLayout || pd.layout || {};
+        var title  = (typeof layout.title === 'string') ? layout.title
+                   : ((layout.title && layout.title.text) || '');
+        return title.toLowerCase().indexOf('frontier') >= 0;
+      } catch(e) { return false; }
+    }
+
+    function findFrontierPlot() {
+      var plots = document.querySelectorAll('.js-plotly-plot');
+      for (var i = 0; i < plots.length; i++) {
+        if (isFrontierPlot(plots[i])) return plots[i];
+      }
+      return null;
+    }
+
+    function hasOurListener(pd) {
+      var pool = (pd._ev && pd._ev.plotly_click)
+              || (pd._events && pd._events.plotly_click)
+              || [];
+      return pool.some(function(h) { return h === _frontierFn; });
+    }
+
+    function makeHandler() {
+      return function(data) {
+        if (!data || !data.points || !data.points.length) return;
+        var pt = data.points[0];
+        if (pt.curveNumber !== 0) return;   // trace 0 = Monte Carlo cloud
+        var vol = pt.x, ret = pt.y;
+        var tb = findTextarea();
+        if (!tb) { console.warn('[frontier-click] textarea not found'); return; }
+        var val = vol + ',' + ret + ',' + Date.now();
+        console.log('[frontier-click] writing', val);
+        // Sync value into DOM and Svelte's reactive store via native setter + input event
+        tb.value = val;
+        try {
+          Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')
+                .set.call(tb, val);
+        } catch(e) {}
+        tb.dispatchEvent(new Event('input',  {bubbles: true}));
+        // change event — triggers Gradio 6.8 .change() handler (local dev)
+        tb.dispatchEvent(new Event('change', {bubbles: true}));
+        // button click — triggers Gradio 6.9 .click() handler (HF Space)
+        // Short delay lets Svelte sync the store before Gradio reads it.
+        setTimeout(function() {
+          var btn = findTriggerBtn();
+          if (btn) {
+            console.log('[frontier-click] clicking trigger button');
+            btn.click();
+          } else {
+            console.warn('[frontier-click] trigger button not found');
+          }
+        }, 80);
+      };
+    }
+
+    function attach(pd) {
+      if (_frontierFn && _frontierPd) {
+        try { _frontierPd.removeListener('plotly_click', _frontierFn); } catch(e) {}
+      }
+      _frontierFn = makeHandler();
+      _frontierPd = pd;
+      pd.on('plotly_click', _frontierFn);
+      console.log('[frontier-click] attached to plot');
+    }
+
+    setInterval(function() {
+      var pd = findFrontierPlot();
+      if (!pd) return;
+      if (pd !== _frontierPd || !hasOurListener(pd)) attach(pd);
+    }, 500);
+  })();
 """
     # `js=` form: arrow function the deprecated Blocks(js=) hook awaits.
     _LAUNCH_JS = "() => {\n" + _PATCH_BODY + "\n}"

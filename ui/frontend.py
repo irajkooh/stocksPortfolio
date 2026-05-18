@@ -19,6 +19,7 @@ from ui.components.dashboard import (
 from ui.components.chatbot import run_agents, tts_html, tts_text_for_js, agent_badges_html
 from ui.components.optimizer_ui import (
     run_optimize,
+    frontier_confirm,
     sync_slider_to_text,
     sync_text_to_slider,
     sync_sr_slider_to_text,
@@ -221,14 +222,14 @@ def rename_portfolio(portfolio_id: int, new_name: str):
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
 def _watchlist_df(portfolio_id: int) -> list[list]:
-    """Return rows for bought stocks; CASH pinned at top. 6-col slice + color hint."""
+    """Return rows for bought stocks; CASH pinned at top. 8-col slice + color hint."""
     full_rows = live_watchlist_rows(portfolio_id)
     result = []
     for r in full_rows:
         if str(r[0]).startswith("Portfolio"):
             continue
         hint = r[8] if len(r) > 8 else ""
-        result.append(r[:6] + [hint])
+        result.append(r[:8] + [hint])
     return result
 
 
@@ -243,9 +244,15 @@ def _all_tickers(portfolio_id: int) -> list[str]:
 
 # ── HTML table helpers (replaces gr.Dataframe for mobile scroll support) ──────
 
-_DASH_WATCH_HEADERS     = ["Ticker", "Price", "1d %", "1mo %", "3mo %", "1y %", "Sharpe (ann., 1y)", "Sortino (ann., 1y)"]
-_ALLOC_HEADERS          = ["Ticker", "Weight", "Dollars", "Shares", "Price"]
-_PORTFOLIO_WATCH_HEADERS = ["Ticker", "Price", "1d %", "1mo %", "3mo %", "1y %"]
+_ALLOC_HEADERS = ["Ticker", "Weight", "Dollars", "Shares", "Price"]
+
+
+def _watch_headers() -> list[str]:
+    """Return watchlist column headers with today's date on the live ratio columns."""
+    import datetime
+    today = datetime.date.today().strftime("%Y-%m-%d")
+    return ["Ticker", "Price", "1d %", "1mo %", "3mo %", "1y %",
+            f"Sharpe (ann., 1y)<br>at {today}", f"Sortino (ann., 1y)<br>at {today}"]
 
 _TH_BASE = ("background:#1F2937;font-size:.75rem;"
             "text-transform:uppercase;letter-spacing:.05em;"
@@ -330,7 +337,7 @@ def _watchlist_html(rows: list[list], headers: list[str]) -> str:
 
 
 def _watchlist_df_html(portfolio_id: int) -> str:
-    return _watchlist_html(_watchlist_df(portfolio_id), _PORTFOLIO_WATCH_HEADERS)
+    return _watchlist_html(_watchlist_df(portfolio_id), _watch_headers())
 
 
 def _portfolio_tickers_str(portfolio_id: int = 1) -> str:
@@ -537,19 +544,23 @@ def refresh_dashboard(portfolio_id: int = 1):
     watch_lbl = _date_range_label("Live watchlist")
     spy_lbl   = _date_range_label("Portfolio vs S&P 500")
     if m is None:
-        return (_watchlist_html(watch, _DASH_WATCH_HEADERS),
-                "—", "—", "—", "—", "—", "—", "—", _placeholder(420),
+        return (_watchlist_html(watch, _watch_headers()),
+                "—", "—", "—",
+                gr.update(value="—", label="Sharpe (ann.)"),
+                gr.update(value="—", label="Sortino (ann.)"),
+                "—", "—", _placeholder(420),
                 _watchlist_html([], _ALLOC_HEADERS),
                 "_Run the Optimizer to see your plan._", vs_spy, watch_lbl, spy_lbl)
-    sortino_s = f"{m['sortino']:.3f}" if m.get("sortino") is not None else "—"
-    var_s     = f"{m['var_95']*100:.2f}%" if m.get("var_95") is not None else "—"
+    sortino_s    = f"{m['sortino']:.3f}" if m.get("sortino") is not None else "—"
+    var_s        = f"{m['var_95']*100:.2f}%" if m.get("var_95") is not None else "—"
+    opt_date_str = m["created_at"].strftime("%Y-%m-%d")
     return (
-        _watchlist_html(watch, _DASH_WATCH_HEADERS),
+        _watchlist_html(watch, _watch_headers()),
         f"${m['budget']:,.0f}",
         f"{m['expected_return']*100:.2f}%",
         f"{m['expected_vol']*100:.2f}%",
-        f"{m['sharpe']:.3f}",
-        sortino_s,
+        gr.update(value=f"{m['sharpe']:.3f}", label=f"Sharpe (ann.)\nat {opt_date_str}"),
+        gr.update(value=sortino_s,            label=f"Sortino (ann.)\nat {opt_date_str}"),
         var_s,
         f"${m['cash_dollars']:,.0f}",
         last_plan_pie(portfolio_id),
@@ -586,7 +597,7 @@ def add_ticker(ticker: str, portfolio_id: int):
         s.commit()
     rows = _watchlist_df(portfolio_id)
     dd = gr.update(choices=_all_tickers(portfolio_id), value=None)
-    return gr.update(value=""), f"✅ Added {payload.ticker}", dd, dd, _watchlist_html(rows, _PORTFOLIO_WATCH_HEADERS)
+    return gr.update(value=""), f"✅ Added {payload.ticker}", dd, dd, _watchlist_html(rows, _watch_headers())
 
 
 def update_position(ticker: str, shares, purchase_price, portfolio_id: int):
@@ -610,7 +621,7 @@ def update_position(ticker: str, shares, purchase_price, portfolio_id: int):
 def remove_ticker(ticker: str, portfolio_id: int):
     if not ticker or ticker == "CASH":
         rows = _watchlist_df(portfolio_id)
-        return "⚠️ pick a ticker (CASH is not removable)", _watchlist_html(rows, _PORTFOLIO_WATCH_HEADERS), gr.update(), gr.update()
+        return "⚠️ pick a ticker (CASH is not removable)", _watchlist_html(rows, _watch_headers()), gr.update(), gr.update()
     with SessionLocal() as s:
         row = (s.query(HoldingDB)
                 .filter_by(portfolio_id=portfolio_id, ticker=ticker).first())
@@ -619,7 +630,7 @@ def remove_ticker(ticker: str, portfolio_id: int):
             s.commit()
     rows = _watchlist_df(portfolio_id)
     dd = gr.update(choices=_all_tickers(portfolio_id), value=None)
-    return f"🗑️ Removed {ticker}", _watchlist_html(rows, _PORTFOLIO_WATCH_HEADERS), dd, dd
+    return f"🗑️ Removed {ticker}", _watchlist_html(rows, _watch_headers()), dd, dd
 
 
 # ── Chat handler ───────────────────────────────────────────────────────────────
@@ -655,20 +666,44 @@ def handle_chat(message, history, tts_on, portfolio_id: int = 1):
 # ── Portfolio-switch handler (refreshes all tabs) ─────────────────────────────
 
 def _load_saved_optimizer(pid: int) -> tuple:
-    """Return 11-element optimizer output tuple from saved PortfolioAllocationDB, or blanks."""
+    """Return 19-element tuple: 11 optimizer outputs + 8 input param updates."""
     import json
     from core.database import SessionLocal
     from core.models import PortfolioAllocationDB
     from services.optimizer import build_plots
 
+    _defaults = (
+        100_000,   # budget
+        15.0,      # target_vol slider (%)
+        4.00,      # rf_slider (%)
+        "4.00%",   # rf_text
+        "2y",      # lookback
+        5_000,     # frontier
+        1.0,       # sr_slider
+        "1.00",    # sr_text
+    )
+
     with SessionLocal() as s:
         row = s.get(PortfolioAllocationDB, pid)
         if row is None:
-            return ("", "", "", "", "", "", "", None, None, None, "")
-        allocs_json   = row.allocations_json
-        frontier_json = row.frontier_json or "[]"
-        cash_dollars  = row.cash_dollars
-        commentary    = row.commentary or ""
+            return (
+                "", "", "",
+                gr.update(value="", label="Sharpe (ann.)"),
+                gr.update(value="", label="Sortino (ann.)"),
+                "", "", None, None, None, "",
+            ) + _defaults
+        allocs_json      = row.allocations_json
+        frontier_json    = row.frontier_json or "[]"
+        cash_dollars     = row.cash_dollars
+        commentary       = row.commentary or ""
+        budget           = row.budget
+        target_vol_pct   = row.target_vol * 100.0
+        rf_pct           = row.risk_free_rate * 100.0
+        rf_val           = row.risk_free_rate or 0.04
+        lookback         = row.lookback
+        frontier_samples = int(row.frontier_samples or 5_000)
+        sr_threshold     = float(row.sr_threshold or 1.0)
+        created_at       = row.created_at
         metrics = {
             "expected_return": row.expected_return,
             "expected_vol":    row.expected_vol,
@@ -678,6 +713,7 @@ def _load_saved_optimizer(pid: int) -> tuple:
         }
 
     allocs = json.loads(allocs_json)
+
     result = {
         "allocations":     allocs,
         "cash_dollars":    cash_dollars,
@@ -686,18 +722,28 @@ def _load_saved_optimizer(pid: int) -> tuple:
         "warnings":        [],
     }
     fig_p, fig_b, fig_f = build_plots(result)
-    sortino_s = f"{metrics['sortino']:.3f}" if metrics.get("sortino") is not None else "—"
-    var_s     = f"{metrics['var_95']*100:.2f}%" if metrics.get("var_95") is not None else "—"
+    sortino_s    = f"{metrics['sortino']:.3f}" if metrics.get("sortino") is not None else "—"
+    var_s        = f"{metrics['var_95']*100:.2f}%" if metrics.get("var_95") is not None else "—"
+    opt_date_str = created_at.strftime("%Y-%m-%d") if created_at else "unknown"
     return (
         "✅ Last saved",
         f"{metrics['expected_return']*100:.2f}%",
         f"{metrics['expected_vol']*100:.2f}%",
-        f"{metrics['sharpe']:.3f}",
-        sortino_s,
+        gr.update(value=f"{metrics['sharpe']:.3f}", label=f"Sharpe (ann.)\nat {opt_date_str}"),
+        gr.update(value=sortino_s,                  label=f"Sortino (ann.)\nat {opt_date_str}"),
         var_s,
         f"${cash_dollars:,.0f}",
         fig_p, fig_b, fig_f,
         commentary,
+        # ── input param restores ──────────────────────────────────────
+        budget,
+        target_vol_pct,
+        rf_pct,
+        f"{rf_pct:.2f}%",
+        lookback,
+        frontier_samples,
+        sr_threshold,
+        f"{sr_threshold:.2f}",
     )
 
 
@@ -709,7 +755,7 @@ def _switch_portfolio(choice: str):
     dd = gr.update(choices=tickers, value=None)
     opt = _load_saved_optimizer(pid)
     return (
-        pid, *dash, _watchlist_html(rows, _PORTFOLIO_WATCH_HEADERS), dd, dd,
+        pid, *dash, _watchlist_html(rows, _watch_headers()), dd, dd,
         _date_range_label("Live prices"),
         [],   # chatbot: clear history
         *opt,
@@ -812,13 +858,14 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                 dash_watch = gr.HTML(value="")
                 gr.Markdown("### Last optimized plan")
                 with gr.Row():
-                    d_budget  = gr.Textbox(label="Budget",          interactive=False)
-                    d_ret     = gr.Textbox(label="Expected return",  interactive=False)
-                    d_vol     = gr.Textbox(label="Expected vol",     interactive=False)
-                    d_shrp    = gr.Textbox(label="Sharpe (ann.)",    interactive=False)
-                    d_sortino = gr.Textbox(label="Sortino (ann.)",   interactive=False)
-                    d_var     = gr.Textbox(label="VaR 95% (ann.)",   interactive=False)
-                    d_cash    = gr.Textbox(label="Cash",             interactive=False)
+                    d_budget  = gr.Textbox(label="Budget",         interactive=False)
+                    d_ret     = gr.Textbox(label="Expected return", interactive=False)
+                    d_vol     = gr.Textbox(label="Expected vol",    interactive=False)
+                with gr.Row():
+                    d_shrp    = gr.Textbox(label="Sharpe (ann.)",   interactive=False)
+                    d_sortino = gr.Textbox(label="Sortino (ann.)",  interactive=False)
+                    d_var     = gr.Textbox(label="VaR 95% (ann.)",  interactive=False)
+                    d_cash    = gr.Textbox(label="Cash",            interactive=False)
                 dash_pie = gr.Plot(label="Allocation", min_width=400, value=_placeholder(420))
                 dash_table = gr.HTML(value="")
                 d_stamp = gr.Markdown()
@@ -870,7 +917,7 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                 def _init_watchlist(pid: int):
                     rows = _watchlist_df(pid)
                     dd = gr.update(choices=_all_tickers(pid), value=None)
-                    return _watchlist_html(rows, _PORTFOLIO_WATCH_HEADERS), dd, _date_range_label("Live prices")
+                    return _watchlist_html(rows, _watch_headers()), dd, _date_range_label("Live prices")
 
                 demo.load(
                     _init_watchlist,
@@ -922,15 +969,25 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                     with gr.Column(scale=3):
                         opt_status = gr.Markdown()
                         with gr.Row():
-                            m_ret     = gr.Textbox(label="Expected return", interactive=False)
-                            m_vol     = gr.Textbox(label="Expected vol",    interactive=False)
-                            m_shrp    = gr.Textbox(label="Sharpe (ann.)",   interactive=False)
-                            m_sortino = gr.Textbox(label="Sortino (ann.)",  interactive=False)
-                            m_var     = gr.Textbox(label="VaR 95% (ann.)",  interactive=False)
-                            m_cash    = gr.Textbox(label="Cash reserve ($)", interactive=False)
+                            m_ret     = gr.Textbox(label="Expected return",  interactive=False)
+                            m_vol     = gr.Textbox(label="Expected vol",     interactive=False)
+                        with gr.Row():
+                            m_shrp    = gr.Textbox(label="Sharpe (ann.)",    interactive=False)
+                            m_sortino = gr.Textbox(label="Sortino (ann.)",   interactive=False)
+                            m_var     = gr.Textbox(label="VaR 95% (ann.)",   interactive=False)
+                            m_cash    = gr.Textbox(label="Cash reserve ($)",  interactive=False)
                         fig_pie      = gr.Plot(label="Allocation")
                         fig_bar      = gr.Plot(label="Dollar allocation")
-                        fig_frontier = gr.Plot(label="Efficient frontier")
+                        fig_frontier = gr.Plot(label="Efficient frontier",
+                                              elem_id="fig-frontier")
+                        frontier_click_data = gr.Textbox(
+                            value="",
+                            elem_id="frontier-click-data",
+                            show_label=False,
+                        )
+                        frontier_trigger_btn = gr.Button(
+                            "", visible=False, elem_id="frontier-trigger-btn"
+                        )
                         opt_commentary = gr.Markdown()
 
                 opt_rf_slider.change(
@@ -954,6 +1011,38 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                 opt_btn.click(
                     run_optimize,
                     inputs=[opt_budget, opt_target_vol, opt_rf_text,
+                            opt_lookback, opt_frontier, portfolio_state, opt_sr_text],
+                    outputs=[opt_status, m_ret, m_vol, m_shrp,
+                             m_sortino, m_var, m_cash,
+                             fig_pie, fig_bar, fig_frontier, opt_commentary,
+                             opt_target_vol]
+                            + _dash_outs,
+                ).then(
+                    _init_watchlist,
+                    [portfolio_state],
+                    [watchlist_df, remove_dd, prices_label],
+                )
+
+                # Belt-and-suspenders: wire both paths so the bridge works on
+                # Gradio 6.8 (local, change event) and 6.9/HF Space (button click).
+                # frontier_confirm deduplicates by timestamp to prevent double-firing.
+                frontier_click_data.change(
+                    frontier_confirm,
+                    inputs=[frontier_click_data, opt_budget, opt_rf_text,
+                            opt_lookback, opt_frontier, portfolio_state, opt_sr_text],
+                    outputs=[opt_status, m_ret, m_vol, m_shrp,
+                             m_sortino, m_var, m_cash,
+                             fig_pie, fig_bar, fig_frontier, opt_commentary,
+                             opt_target_vol]
+                            + _dash_outs,
+                ).then(
+                    _init_watchlist,
+                    [portfolio_state],
+                    [watchlist_df, remove_dd, prices_label],
+                )
+                frontier_trigger_btn.click(
+                    frontier_confirm,
+                    inputs=[frontier_click_data, opt_budget, opt_rf_text,
                             opt_lookback, opt_frontier, portfolio_state, opt_sr_text],
                     outputs=[opt_status, m_ret, m_vol, m_shrp,
                              m_sortino, m_var, m_cash,
@@ -1177,6 +1266,8 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
             + [opt_status, m_ret, m_vol, m_shrp,
                m_sortino, m_var, m_cash,
                fig_pie, fig_bar, fig_frontier, opt_commentary]
+            + [opt_budget, opt_target_vol, opt_rf_slider, opt_rf_text,
+               opt_lookback, opt_frontier, opt_sr_slider, opt_sr_text]
         )
 
         # Fire resize at 150 ms and 500 ms so Plotly re-measures after figures swap,
@@ -1200,7 +1291,9 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
             [portfolio_state],
             [opt_status, m_ret, m_vol, m_shrp,
              m_sortino, m_var, m_cash,
-             fig_pie, fig_bar, fig_frontier, opt_commentary],
+             fig_pie, fig_bar, fig_frontier, opt_commentary,
+             opt_budget, opt_target_vol, opt_rf_slider, opt_rf_text,
+             opt_lookback, opt_frontier, opt_sr_slider, opt_sr_text],
         )
 
         pf_create_btn.click(
