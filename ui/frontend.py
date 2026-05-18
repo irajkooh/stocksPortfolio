@@ -400,7 +400,8 @@ def _portfolio_vs_spy_fig(
         plot_bgcolor="#111827",
         xaxis_title="Date",
         xaxis_range=[str(date.today() - timedelta(days=365)), str(date.today())],
-        yaxis_title="Normalized (start=100)",
+        yaxis_title="Cumulative Return (%)",
+        yaxis_ticksuffix="%",
         legend=dict(orientation="h", y=-0.2),
         height=460,
         autosize=True,
@@ -485,7 +486,7 @@ def _portfolio_vs_spy_fig(
             log.warning("vs-SPY: only %d aligned rows after dropna — insufficient", len(df))
             df = df.iloc[0:0]
         if not df.empty:
-            norm = df.div(df.iloc[0]).mul(100.0)
+            norm = df.div(df.iloc[0]).sub(1).mul(100.0)
 
             port_eq = norm.mean(axis=1)
             _add_split_trace(port_eq.index, port_eq.values,
@@ -501,7 +502,7 @@ def _portfolio_vs_spy_fig(
                                      "Portfolio (optimized)", "#00FF94", group="opt")
 
     if not spy.empty:
-        spy_norm = spy.div(spy.iloc[0]).mul(100.0)
+        spy_norm = spy.div(spy.iloc[0]).sub(1).mul(100.0)
         _add_split_trace(spy_norm.index, spy_norm.values,
                          "S&P 500", "#FFA500", group="spy")
 
