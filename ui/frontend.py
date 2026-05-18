@@ -559,8 +559,8 @@ def refresh_dashboard(portfolio_id: int = 1):
         f"${m['budget']:,.0f}",
         f"{m['expected_return']*100:.2f}%",
         f"{m['expected_vol']*100:.2f}%",
-        gr.update(value=f"{m['sharpe']:.3f}\nat {opt_date_raw}", label="Sharpe (ann.)"),
-        gr.update(value=f"{sortino_s}\nat {opt_date_raw}",      label="Sortino (ann.)"),
+        gr.update(value=f"{m['sharpe']:.3f}", label=f"Sharpe (ann.) at {opt_date_raw}"),
+        gr.update(value=f"{sortino_s}",       label=f"Sortino (ann.) at {opt_date_raw}"),
         var_s,
         f"${m['cash_dollars']:,.0f}",
         last_plan_pie(portfolio_id),
@@ -730,8 +730,8 @@ def _load_saved_optimizer(pid: int) -> tuple:
         "✅ Last saved",
         f"{metrics['expected_return']*100:.2f}%",
         f"{metrics['expected_vol']*100:.2f}%",
-        gr.update(value=f"{metrics['sharpe']:.3f}\nat {opt_date_str}", label="Sharpe (ann.)"),
-        gr.update(value=f"{sortino_s}\nat {opt_date_str}",              label="Sortino (ann.)"),
+        gr.update(value=f"{metrics['sharpe']:.3f}", label="Sharpe (ann.)",  info=f"at {opt_date_str}"),
+        gr.update(value=sortino_s,                  label="Sortino (ann.)", info=f"at {opt_date_str}"),
         var_s,
         f"${cash_dollars:,.0f}",
         fig_p, fig_b, fig_f,
@@ -863,8 +863,8 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                     d_ret     = gr.Textbox(label="Expected return", interactive=False)
                     d_vol     = gr.Textbox(label="Expected vol",    interactive=False)
                 with gr.Row():
-                    d_shrp    = gr.Textbox(label="Sharpe (ann.)",   interactive=False)
-                    d_sortino = gr.Textbox(label="Sortino (ann.)",  interactive=False)
+                    d_shrp    = gr.Textbox(label="Sharpe (ann.)",   interactive=False, info="")
+                    d_sortino = gr.Textbox(label="Sortino (ann.)",  interactive=False, info="")
                     d_var     = gr.Textbox(label="VaR 95% (ann.)",  interactive=False)
                     d_cash    = gr.Textbox(label="Cash",            interactive=False)
                 dash_pie = gr.Plot(label="Allocation", min_width=400, value=_placeholder(420))
@@ -973,8 +973,8 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                             m_ret     = gr.Textbox(label="Expected return",  interactive=False)
                             m_vol     = gr.Textbox(label="Expected vol",     interactive=False)
                         with gr.Row():
-                            m_shrp    = gr.Textbox(label="Sharpe (ann.)",    interactive=False)
-                            m_sortino = gr.Textbox(label="Sortino (ann.)",   interactive=False)
+                            m_shrp    = gr.Textbox(label="Sharpe (ann.)",    interactive=False, info="")
+                            m_sortino = gr.Textbox(label="Sortino (ann.)",   interactive=False, info="")
                             m_var     = gr.Textbox(label="VaR 95% (ann.)",   interactive=False)
                             m_cash    = gr.Textbox(label="Cash reserve ($)",  interactive=False)
                         fig_pie      = gr.Plot(label="Allocation")
