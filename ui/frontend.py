@@ -699,7 +699,6 @@ def _load_saved_optimizer(pid: int) -> tuple:
         budget           = row.budget
         target_vol_pct   = row.target_vol * 100.0
         rf_pct           = row.risk_free_rate * 100.0
-        rf_val           = row.risk_free_rate or 0.04
         lookback         = row.lookback
         frontier_samples = int(row.frontier_samples or 5_000)
         sr_threshold     = float(row.sr_threshold or 1.0)
