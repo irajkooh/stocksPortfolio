@@ -111,12 +111,13 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
     def _dash_outputs(saved_at):
         from ui.frontend import _portfolio_vs_spy_fig, _watchlist_html, _watch_headers, _ALLOC_HEADERS
         import pandas as pd
-        opt_date_str = saved_at.strftime("%Y-%m-%d")
         watch = [r for r in live_watchlist_rows(portfolio_id) if not (len(r) > 8 and r[8] == "red")]
         rows, m = last_plan_rows(portfolio_id)
         if m is None:
             return (_watchlist_html(watch, _watch_headers()),) + _DASH_EMPTY
-        vs_spy = _portfolio_vs_spy_fig(portfolio_id, opt_date_override=pd.Timestamp(saved_at.date()))
+        stored_at    = m["created_at"] or saved_at
+        opt_date_str = stored_at.strftime("%Y-%m-%d")
+        vs_spy = _portfolio_vs_spy_fig(portfolio_id, opt_date_override=pd.Timestamp(stored_at.date()))
         sortino_s = f"{m['sortino']:.3f}" if m.get("sortino") is not None else "—"
         var_s     = f"{m['var_95']*100:.2f}%" if m.get("var_95") is not None else "—"
         return (
@@ -130,7 +131,7 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
             f"${m['cash_dollars']:,.0f}",
             last_plan_pie(portfolio_id),
             _watchlist_html(rows, _ALLOC_HEADERS),
-            f"_Last optimized: {m['created_at'].strftime('%Y-%m-%d %H:%M:%S')}_",
+            f"_Last optimized: {stored_at.strftime('%Y-%m-%d %H:%M:%S')}_",
             vs_spy,
             gr.update(),  # watch_label — preserve existing value
             gr.update(),  # spy_label — preserve existing value
