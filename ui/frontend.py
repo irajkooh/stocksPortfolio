@@ -712,7 +712,6 @@ def _stocks_vs_spy_return_fig(
     opt_date_override: "pd.Timestamp | None" = None,
 ) -> go.Figure:
     """Cumulative return % for each individual stock vs S&P 500."""
-    import json
     from core.models import PortfolioAllocationDB
 
     with SessionLocal() as s:
@@ -720,11 +719,8 @@ def _stocks_vs_spy_return_fig(
                    s.query(HoldingDB).filter_by(portfolio_id=portfolio_id).all()]
         alloc_row = s.get(PortfolioAllocationDB, portfolio_id)
 
-    opt_tickers: set[str] = set()
     opt_date: "pd.Timestamp | None" = opt_date_override
     if alloc_row:
-        allocs = json.loads(alloc_row.allocations_json)
-        opt_tickers = set(allocs.keys())
         if opt_date is None and alloc_row.created_at:
             opt_date = pd.Timestamp(alloc_row.created_at.date())
 
@@ -855,7 +851,6 @@ def _stocks_vs_spy_sharpe_fig(
     window: int = 63,
 ) -> go.Figure:
     """Rolling Sharpe ratio (annualized) for each individual stock vs S&P 500."""
-    import json
     from core.models import PortfolioAllocationDB
 
     with SessionLocal() as s:
