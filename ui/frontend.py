@@ -538,12 +538,489 @@ def _portfolio_vs_spy_fig(
     return fig
 
 
+def _portfolio_vs_spy_sharpe_fig(
+    portfolio_id: int,
+    period: str = "1y",
+    opt_date_override: "pd.Timestamp | None" = None,
+    window: int = 63,
+) -> go.Figure:
+    """Rolling Sharpe ratio for equal-weight & optimized-weight portfolio vs S&P 500."""
+    import json
+    from core.models import PortfolioAllocationDB
+
+    with SessionLocal() as s:
+        tickers = [h.ticker for h in
+                   s.query(HoldingDB).filter_by(portfolio_id=portfolio_id).all()]
+        alloc_row = s.get(PortfolioAllocationDB, portfolio_id)
+
+    opt_weights: dict[str, float] = {}
+    opt_date: "pd.Timestamp | None" = opt_date_override
+    rf = 0.04
+    if alloc_row:
+        rf = float(alloc_row.risk_free_rate or 0.04)
+        allocs = json.loads(alloc_row.allocations_json)
+        total_w = sum(v["weight"] for v in allocs.values())
+        if total_w > 0:
+            opt_weights = {t: v["weight"] / total_w for t, v in allocs.items()}
+        if opt_date is None and alloc_row.created_at:
+            opt_date = pd.Timestamp(alloc_row.created_at.date())
+
+    fig = go.Figure()
+    fig.update_layout(
+        title=f"Portfolio vs S&P 500 — Rolling Sharpe ({window}d, {_period_date_range(period)})",
+        template="plotly_dark",
+        paper_bgcolor="#0A0E1A",
+        plot_bgcolor="#111827",
+        xaxis=dict(
+            title="Date",
+            range=[str(date.today() - timedelta(days=365)), str(date.today())],
+            autorange=False,
+        ),
+        yaxis_title="Rolling Sharpe Ratio (annualized)",
+        legend=dict(orientation="h", y=-0.2),
+        height=460,
+        autosize=True,
+        margin=dict(l=48, r=24, t=48, b=60),
+    )
+
+    closes: dict[str, pd.Series] = {}
+    spy = pd.Series(dtype=float)
+
+    if tickers:
+        import yfinance as yf
+        symbols = list(dict.fromkeys(tickers + ["^GSPC"]))
+        try:
+            _end = date.today() + timedelta(days=1)
+            _start = date.today() - timedelta(days=366)
+            raw = yf.download(symbols, start=str(_start), end=str(_end),
+                              group_by="ticker", auto_adjust=True,
+                              threads=False, progress=False)
+        except Exception as e:
+            log.warning("port-sharpe-vs-SPY: download failed: %s", e)
+            raw = None
+
+        if raw is not None and not raw.empty:
+            for t in symbols:
+                try:
+                    series = raw[t]["Close"].dropna() if len(symbols) > 1 else raw["Close"].dropna()
+                except Exception:
+                    series = pd.Series(dtype=float)
+                if t == "^GSPC":
+                    spy = series
+                elif not series.empty:
+                    closes[t] = series
+
+    def _rolling_sharpe(r: pd.Series) -> pd.Series:
+        rm      = r.rolling(window).mean()
+        rs      = r.rolling(window).std()
+        ann_ret = rm * 252
+        ann_vol = rs * np.sqrt(252)
+        return ((ann_ret - rf) / ann_vol.where(ann_vol > 0, other=np.nan)).dropna()
+
+    def _add_split_trace(x, y, name, color, group=""):
+        n_after = int((x > opt_date).sum()) if opt_date is not None else 0
+        split = opt_date is not None and len(x) > 0 and x[0] < opt_date and n_after >= 2
+        if split:
+            before = x <= opt_date
+            after  = x >= opt_date
+            fig.add_trace(go.Scatter(
+                x=x[before], y=y[before], mode="lines", name=name,
+                line=dict(color=color, width=1.5, dash="dot"),
+                opacity=0.4, legendgroup=group, showlegend=False,
+            ))
+            fig.add_trace(go.Scatter(
+                x=x[after], y=y[after], mode="lines", name=name,
+                line=dict(color=color, width=2.5),
+                legendgroup=group, showlegend=True,
+            ))
+        else:
+            fig.add_trace(go.Scatter(
+                x=x, y=y, mode="lines", name=name,
+                line=dict(color=color, width=2.5),
+                legendgroup=group,
+            ))
+
+    if closes:
+        df = pd.concat(closes, axis=1).dropna(how="any")
+        if len(df) >= window + 5:
+            rets = df.pct_change()
+
+            eq_ret = rets.mean(axis=1)
+            rs_eq = _rolling_sharpe(eq_ret)
+            if not rs_eq.empty:
+                _add_split_trace(rs_eq.index, rs_eq.values,
+                                 "Portfolio (equal-weighted)", "#00D4FF", group="eq")
+
+            if opt_weights:
+                common = [t for t in df.columns if t in opt_weights]
+                if common:
+                    w = pd.Series({t: opt_weights[t] for t in common})
+                    w = w / w.sum()
+                    opt_ret = rets[common].mul(w, axis=1).sum(axis=1)
+                    rs_opt = _rolling_sharpe(opt_ret)
+                    if not rs_opt.empty:
+                        _add_split_trace(rs_opt.index, rs_opt.values,
+                                         "Portfolio (optimized)", "#00FF94", group="opt")
+
+    if not spy.empty:
+        rs_spy = _rolling_sharpe(spy.pct_change().dropna())
+        if not rs_spy.empty:
+            _add_split_trace(rs_spy.index, rs_spy.values, "S&P 500", "#FFA500", group="spy")
+
+    # Yellow vertical line at optimization date
+    if opt_date is not None and fig.data:
+        all_x = pd.DatetimeIndex([t for tr in fig.data if tr.x is not None for t in tr.x])
+        if not all_x.empty and all_x.min() <= opt_date:
+            marker_x = min(opt_date, all_x.max())
+            fig.add_vline(
+                x=str(marker_x.date()),
+                line=dict(color="#FFD700", width=1.5, dash="dash"),
+            )
+            fig.add_annotation(
+                x=marker_x, y=1.0, xref="x", yref="paper",
+                text="<b>Optimized</b>", showarrow=False,
+                font=dict(color="#FFD700", size=11),
+                bgcolor="rgba(10,14,26,0.7)", bordercolor="#FFD700",
+                borderwidth=1, borderpad=3,
+                xanchor="left", yanchor="top", xshift=6,
+            )
+            if marker_x < all_x.max():
+                fig.add_vrect(
+                    x0=marker_x, x1=all_x.max(),
+                    fillcolor="rgba(0,255,148,0.04)",
+                    layer="below", line_width=0,
+                )
+
+    if not fig.data:
+        fig.add_annotation(text="No price history available",
+                           xref="paper", yref="paper", x=0.5, y=0.5,
+                           showarrow=False, font=dict(color="#9CA3AF"))
+    return fig
+
+
+# ── Color palette for individual stock traces ─────────────────────────────────
+_STOCK_COLORS = [
+    "#00D4FF", "#FF6B6B", "#FFD700", "#A78BFA", "#FF9F43",
+    "#C8A2C8", "#7ED321", "#9B59B6", "#E74C3C", "#3498DB",
+    "#1ABC9C", "#F39C12", "#2ECC71", "#E91E63", "#FF5722",
+]
+
+
+def _stocks_vs_spy_return_fig(
+    portfolio_id: int,
+    period: str = "1y",
+    opt_date_override: "pd.Timestamp | None" = None,
+) -> go.Figure:
+    """Cumulative return % for each individual stock vs S&P 500."""
+    import json
+    from core.models import PortfolioAllocationDB
+
+    with SessionLocal() as s:
+        tickers = [h.ticker for h in
+                   s.query(HoldingDB).filter_by(portfolio_id=portfolio_id).all()]
+        alloc_row = s.get(PortfolioAllocationDB, portfolio_id)
+
+    opt_tickers: set[str] = set()
+    opt_date: "pd.Timestamp | None" = opt_date_override
+    if alloc_row:
+        allocs = json.loads(alloc_row.allocations_json)
+        opt_tickers = set(allocs.keys())
+        if opt_date is None and alloc_row.created_at:
+            opt_date = pd.Timestamp(alloc_row.created_at.date())
+
+    fig = go.Figure()
+    fig.update_layout(
+        title=f"Individual Stocks vs S&P 500 — Return % ({_period_date_range(period)})",
+        template="plotly_dark",
+        paper_bgcolor="#0A0E1A",
+        plot_bgcolor="#111827",
+        xaxis=dict(
+            title="Date",
+            range=[str(date.today() - timedelta(days=365)), str(date.today())],
+            autorange=False,
+        ),
+        yaxis_title="Cumulative Return (%)",
+        yaxis_ticksuffix="%",
+        legend=dict(orientation="h", y=-0.2),
+        height=460,
+        autosize=True,
+        margin=dict(l=48, r=24, t=48, b=60),
+    )
+
+    if not tickers:
+        fig.add_annotation(text="No holdings in portfolio",
+                           xref="paper", yref="paper", x=0.5, y=0.5,
+                           showarrow=False, font=dict(color="#9CA3AF"))
+        return fig
+
+    import yfinance as yf
+    symbols = list(dict.fromkeys(tickers + ["^GSPC"]))
+    try:
+        _end = date.today() + timedelta(days=1)
+        _start = date.today() - timedelta(days=366)
+        raw = yf.download(symbols, start=str(_start), end=str(_end),
+                          group_by="ticker", auto_adjust=True,
+                          threads=False, progress=False)
+    except Exception as e:
+        log.warning("stocks-vs-SPY-return: download failed: %s", e)
+        raw = None
+
+    closes: dict[str, pd.Series] = {}
+    if raw is not None and not raw.empty:
+        for t in symbols:
+            try:
+                series = raw[t]["Close"].dropna() if len(symbols) > 1 else raw["Close"].dropna()
+            except Exception:
+                series = pd.Series(dtype=float)
+            if not series.empty:
+                closes[t] = series
+
+    if not closes:
+        fig.add_annotation(text="No price history available",
+                           xref="paper", yref="paper", x=0.5, y=0.5,
+                           showarrow=False, font=dict(color="#9CA3AF"))
+        return fig
+
+    df = pd.concat({k: v for k, v in closes.items()}, axis=1).dropna(how="any")
+    if len(df) < 5:
+        fig.add_annotation(text="Insufficient price history",
+                           xref="paper", yref="paper", x=0.5, y=0.5,
+                           showarrow=False, font=dict(color="#9CA3AF"))
+        return fig
+
+    norm = df.div(df.iloc[0]).sub(1).mul(100.0)
+
+    def _add_split_trace_r(x, y, name, color, group=""):
+        n_after = int((x > opt_date).sum()) if opt_date is not None else 0
+        split = opt_date is not None and len(x) > 0 and x[0] < opt_date and n_after >= 2
+        if split:
+            before = x <= opt_date
+            after  = x >= opt_date
+            fig.add_trace(go.Scatter(
+                x=x[before], y=y[before], mode="lines", name=name,
+                line=dict(color=color, width=1.5, dash="dot"),
+                opacity=0.4, legendgroup=group, showlegend=False,
+            ))
+            fig.add_trace(go.Scatter(
+                x=x[after], y=y[after], mode="lines", name=name,
+                line=dict(color=color, width=2.5),
+                legendgroup=group, showlegend=True,
+            ))
+        else:
+            fig.add_trace(go.Scatter(
+                x=x, y=y, mode="lines", name=name,
+                line=dict(color=color, width=2.5),
+                legendgroup=group,
+            ))
+
+    stock_cols = [c for c in df.columns if c != "^GSPC"]
+    for i, ticker in enumerate(stock_cols):
+        color = _STOCK_COLORS[i % len(_STOCK_COLORS)]
+        _add_split_trace_r(norm.index, norm[ticker].values, ticker, color, group=ticker)
+
+    if "^GSPC" in norm.columns:
+        _add_split_trace_r(norm.index, norm["^GSPC"].values, "S&P 500", "#FFA500", group="spy")
+
+    # Yellow vertical line at optimization date
+    if opt_date is not None and fig.data:
+        all_x = pd.DatetimeIndex([t for tr in fig.data if tr.x is not None for t in tr.x])
+        if not all_x.empty and all_x.min() <= opt_date:
+            marker_x = min(opt_date, all_x.max())
+            fig.add_vline(
+                x=str(marker_x.date()),
+                line=dict(color="#FFD700", width=1.5, dash="dash"),
+            )
+            fig.add_annotation(
+                x=marker_x, y=1.0, xref="x", yref="paper",
+                text="<b>Optimized</b>", showarrow=False,
+                font=dict(color="#FFD700", size=11),
+                bgcolor="rgba(10,14,26,0.7)", bordercolor="#FFD700",
+                borderwidth=1, borderpad=3,
+                xanchor="left", yanchor="top", xshift=6,
+            )
+            if marker_x < all_x.max():
+                fig.add_vrect(
+                    x0=marker_x, x1=all_x.max(),
+                    fillcolor="rgba(0,255,148,0.04)",
+                    layer="below", line_width=0,
+                )
+
+    return fig
+
+
+def _stocks_vs_spy_sharpe_fig(
+    portfolio_id: int,
+    period: str = "1y",
+    opt_date_override: "pd.Timestamp | None" = None,
+    window: int = 63,
+) -> go.Figure:
+    """Rolling Sharpe ratio (annualized) for each individual stock vs S&P 500."""
+    import json
+    from core.models import PortfolioAllocationDB
+
+    with SessionLocal() as s:
+        tickers = [h.ticker for h in
+                   s.query(HoldingDB).filter_by(portfolio_id=portfolio_id).all()]
+        alloc_row = s.get(PortfolioAllocationDB, portfolio_id)
+
+    opt_date: "pd.Timestamp | None" = opt_date_override
+    rf = 0.04
+    if alloc_row:
+        rf = float(alloc_row.risk_free_rate or 0.04)
+        if opt_date is None and alloc_row.created_at:
+            opt_date = pd.Timestamp(alloc_row.created_at.date())
+
+    fig = go.Figure()
+    fig.update_layout(
+        title=f"Individual Stocks vs S&P 500 — Rolling Sharpe ({window}d, {_period_date_range(period)})",
+        template="plotly_dark",
+        paper_bgcolor="#0A0E1A",
+        plot_bgcolor="#111827",
+        xaxis=dict(
+            title="Date",
+            range=[str(date.today() - timedelta(days=365)), str(date.today())],
+            autorange=False,
+        ),
+        yaxis_title="Rolling Sharpe Ratio (annualized)",
+        legend=dict(orientation="h", y=-0.2),
+        height=460,
+        autosize=True,
+        margin=dict(l=48, r=24, t=48, b=60),
+    )
+
+    if not tickers:
+        fig.add_annotation(text="No holdings in portfolio",
+                           xref="paper", yref="paper", x=0.5, y=0.5,
+                           showarrow=False, font=dict(color="#9CA3AF"))
+        return fig
+
+    import yfinance as yf
+    symbols = list(dict.fromkeys(tickers + ["^GSPC"]))
+    try:
+        _end = date.today() + timedelta(days=1)
+        _start = date.today() - timedelta(days=366)
+        raw = yf.download(symbols, start=str(_start), end=str(_end),
+                          group_by="ticker", auto_adjust=True,
+                          threads=False, progress=False)
+    except Exception as e:
+        log.warning("stocks-vs-SPY-sharpe: download failed: %s", e)
+        raw = None
+
+    closes: dict[str, pd.Series] = {}
+    if raw is not None and not raw.empty:
+        for t in symbols:
+            try:
+                series = raw[t]["Close"].dropna() if len(symbols) > 1 else raw["Close"].dropna()
+            except Exception:
+                series = pd.Series(dtype=float)
+            if not series.empty:
+                closes[t] = series
+
+    if not closes:
+        fig.add_annotation(text="No price history available",
+                           xref="paper", yref="paper", x=0.5, y=0.5,
+                           showarrow=False, font=dict(color="#9CA3AF"))
+        return fig
+
+    df = pd.concat({k: v for k, v in closes.items()}, axis=1).dropna(how="any")
+    if len(df) < window + 5:
+        fig.add_annotation(
+            text=f"Need at least {window + 5} trading days of history for rolling Sharpe",
+            xref="paper", yref="paper", x=0.5, y=0.5,
+            showarrow=False, font=dict(color="#9CA3AF"))
+        return fig
+
+    rets = df.pct_change()
+
+    def _rolling_sharpe(r: pd.Series) -> pd.Series:
+        # Full window required — early partial-window Sharpe is statistically
+        # unreliable (std estimate has large uncertainty below ~63 samples).
+        rm  = r.rolling(window).mean()
+        rs  = r.rolling(window).std()
+        ann_ret = rm * 252
+        ann_vol = rs * np.sqrt(252)
+        sharpe  = (ann_ret - rf) / ann_vol.where(ann_vol > 0, other=np.nan)
+        return sharpe.dropna()
+
+    def _add_split_trace_s(x, y, name, color, group=""):
+        n_after = int((x > opt_date).sum()) if opt_date is not None else 0
+        split = opt_date is not None and len(x) > 0 and x[0] < opt_date and n_after >= 2
+        if split:
+            before = x <= opt_date
+            after  = x >= opt_date
+            fig.add_trace(go.Scatter(
+                x=x[before], y=y[before], mode="lines", name=name,
+                line=dict(color=color, width=1.5, dash="dot"),
+                opacity=0.4, legendgroup=group, showlegend=False,
+            ))
+            fig.add_trace(go.Scatter(
+                x=x[after], y=y[after], mode="lines", name=name,
+                line=dict(color=color, width=2.5),
+                legendgroup=group, showlegend=True,
+            ))
+        else:
+            fig.add_trace(go.Scatter(
+                x=x, y=y, mode="lines", name=name,
+                line=dict(color=color, width=2.5),
+                legendgroup=group,
+            ))
+
+    stock_cols = [c for c in df.columns if c != "^GSPC"]
+    for i, ticker in enumerate(stock_cols):
+        color = _STOCK_COLORS[i % len(_STOCK_COLORS)]
+        rs = _rolling_sharpe(rets[ticker])
+        if not rs.empty:
+            _add_split_trace_s(rs.index, rs.values, ticker, color, group=ticker)
+
+    if "^GSPC" in rets.columns:
+        rs_spy = _rolling_sharpe(rets["^GSPC"])
+        if not rs_spy.empty:
+            _add_split_trace_s(rs_spy.index, rs_spy.values, "S&P 500", "#FFA500", group="spy")
+
+    # Yellow vertical line at optimization date
+    if opt_date is not None and fig.data:
+        all_x = pd.DatetimeIndex([t for tr in fig.data if tr.x is not None for t in tr.x])
+        if not all_x.empty and all_x.min() <= opt_date:
+            marker_x = min(opt_date, all_x.max())
+            fig.add_vline(
+                x=str(marker_x.date()),
+                line=dict(color="#FFD700", width=1.5, dash="dash"),
+            )
+            fig.add_annotation(
+                x=marker_x, y=1.0, xref="x", yref="paper",
+                text="<b>Optimized</b>", showarrow=False,
+                font=dict(color="#FFD700", size=11),
+                bgcolor="rgba(10,14,26,0.7)", bordercolor="#FFD700",
+                borderwidth=1, borderpad=3,
+                xanchor="left", yanchor="top", xshift=6,
+            )
+            if marker_x < all_x.max():
+                fig.add_vrect(
+                    x0=marker_x, x1=all_x.max(),
+                    fillcolor="rgba(0,255,148,0.04)",
+                    layer="below", line_width=0,
+                )
+
+    if not fig.data:
+        fig.add_annotation(text="Insufficient data for rolling Sharpe",
+                           xref="paper", yref="paper", x=0.5, y=0.5,
+                           showarrow=False, font=dict(color="#9CA3AF"))
+
+    return fig
+
+
 def refresh_dashboard(portfolio_id: int = 1):
-    watch = [r for r in live_watchlist_rows(portfolio_id) if not (len(r) > 8 and r[8] == "red")]
-    vs_spy = _portfolio_vs_spy_fig(portfolio_id)
-    rows, m = last_plan_rows(portfolio_id)
-    watch_lbl = _date_range_label("Live watchlist")
-    spy_lbl   = _date_range_label("Portfolio vs S&P 500")
+    watch          = [r for r in live_watchlist_rows(portfolio_id) if not (len(r) > 8 and r[8] == "red")]
+    vs_spy         = _portfolio_vs_spy_fig(portfolio_id)
+    port_sharpe    = _portfolio_vs_spy_sharpe_fig(portfolio_id)
+    stocks_return  = _stocks_vs_spy_return_fig(portfolio_id)
+    stocks_sharpe  = _stocks_vs_spy_sharpe_fig(portfolio_id)
+    rows, m        = last_plan_rows(portfolio_id)
+    watch_lbl          = _date_range_label("Live watchlist")
+    spy_lbl            = _date_range_label("Portfolio vs S&P 500")
+    port_sharpe_lbl    = _date_range_label("Portfolio vs S&P 500 — Rolling Sharpe (63d)")
+    stocks_return_lbl  = _date_range_label("Individual Stocks vs S&P 500 — Return %")
+    stocks_sharpe_lbl  = _date_range_label("Individual Stocks vs S&P 500 — Rolling Sharpe (63d)")
     if m is None:
         return (_watchlist_html(watch, _watch_headers()),
                 "—", "—", "—",
@@ -551,7 +1028,10 @@ def refresh_dashboard(portfolio_id: int = 1):
                 gr.update(value="—", label="Sortino (ann.)"),
                 "—", "—", _placeholder(420),
                 _watchlist_html([], _ALLOC_HEADERS),
-                "_Run the Optimizer to see your plan._", vs_spy, watch_lbl, spy_lbl)
+                "_Run the Optimizer to see your plan._", vs_spy, watch_lbl, spy_lbl,
+                port_sharpe, port_sharpe_lbl,
+                stocks_return, stocks_return_lbl,
+                stocks_sharpe, stocks_sharpe_lbl)
     sortino_s      = f"{m['sortino']:.3f}" if m.get("sortino") is not None else "—"
     var_s          = f"{m['var_95']*100:.2f}%" if m.get("var_95") is not None else "—"
     opt_date_raw   = m.get("opt_date") or "unknown"
@@ -570,6 +1050,12 @@ def refresh_dashboard(portfolio_id: int = 1):
         vs_spy,
         watch_lbl,
         spy_lbl,
+        port_sharpe,
+        port_sharpe_lbl,
+        stocks_return,
+        stocks_return_lbl,
+        stocks_sharpe,
+        stocks_sharpe_lbl,
     )
 
 
@@ -873,13 +1359,22 @@ def create_interface(theme=None, css: str | None = None, js: str | None = None) 
                 d_stamp = gr.Markdown()
                 spy_label = gr.Markdown(_date_range_label("Portfolio vs S&P 500"))
                 dash_vs_spy = gr.Plot(label="Portfolio vs S&P 500", min_width=400, value=_placeholder(460))
+                port_sharpe_label = gr.Markdown(_date_range_label("Portfolio vs S&P 500 — Rolling Sharpe (63d)"))
+                dash_port_sharpe = gr.Plot(label="Portfolio vs S&P 500 — Rolling Sharpe (63d)", min_width=400, value=_placeholder(460))
+                stocks_return_label = gr.Markdown(_date_range_label("Individual Stocks vs S&P 500 — Return %"))
+                dash_stocks_return = gr.Plot(label="Individual Stocks vs S&P 500 — Return %", min_width=400, value=_placeholder(460))
+                stocks_sharpe_label = gr.Markdown(_date_range_label("Individual Stocks vs S&P 500 — Rolling Sharpe (63d)"))
+                dash_stocks_sharpe = gr.Plot(label="Individual Stocks vs S&P 500 — Rolling Sharpe (63d)", min_width=400, value=_placeholder(460))
                 refresh_btn = gr.Button("🔄 Refresh dashboard", variant="primary",
                                         elem_classes="btn-glow")
 
                 _dash_outs = [dash_watch, d_budget, d_ret, d_vol, d_shrp,
                               d_sortino, d_var, d_cash,
                               dash_pie, dash_table, d_stamp, dash_vs_spy,
-                              watch_label, spy_label]
+                              watch_label, spy_label,
+                              dash_port_sharpe, port_sharpe_label,
+                              dash_stocks_return, stocks_return_label,
+                              dash_stocks_sharpe, stocks_sharpe_label]
                 refresh_btn.click(refresh_dashboard, [portfolio_state], _dash_outs)
                 demo.load(refresh_dashboard, [portfolio_state], _dash_outs)
 

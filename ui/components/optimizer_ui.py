@@ -40,6 +40,9 @@ _DASH_EMPTY = (
     gr.update(value="—", label="Sortino (ann.)"),
     "—", "—", None, "", "_Run the Optimizer to see your plan._", None,
     gr.update(), gr.update(),  # watch_label, spy_label
+    None, gr.update(),         # dash_port_sharpe, port_sharpe_label
+    None, gr.update(),         # dash_stocks_return, stocks_return_label
+    None, gr.update(),         # dash_stocks_sharpe, stocks_sharpe_label
 )
 
 
@@ -109,14 +112,22 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
     from ui.components.dashboard import live_watchlist_rows, last_plan_rows, last_plan_pie
 
     def _dash_outputs(saved_at):
-        from ui.frontend import _portfolio_vs_spy_fig, _watchlist_html, _watch_headers, _ALLOC_HEADERS
+        from ui.frontend import (
+            _portfolio_vs_spy_fig, _portfolio_vs_spy_sharpe_fig,
+            _stocks_vs_spy_return_fig, _stocks_vs_spy_sharpe_fig,
+            _watchlist_html, _watch_headers, _ALLOC_HEADERS,
+        )
         import pandas as pd
         watch = [r for r in live_watchlist_rows(portfolio_id) if not (len(r) > 8 and r[8] == "red")]
         rows, m = last_plan_rows(portfolio_id)
         if m is None:
             return (_watchlist_html(watch, _watch_headers()),) + _DASH_EMPTY
         opt_date_raw  = m.get("opt_date") or saved_at.strftime("%Y-%m-%d %Z")
-        vs_spy = _portfolio_vs_spy_fig(portfolio_id, opt_date_override=pd.Timestamp(opt_date_raw[:10]))
+        opt_ts = pd.Timestamp(opt_date_raw[:10])
+        vs_spy         = _portfolio_vs_spy_fig(portfolio_id, opt_date_override=opt_ts)
+        port_sharpe    = _portfolio_vs_spy_sharpe_fig(portfolio_id, opt_date_override=opt_ts)
+        stocks_return  = _stocks_vs_spy_return_fig(portfolio_id, opt_date_override=opt_ts)
+        stocks_sharpe  = _stocks_vs_spy_sharpe_fig(portfolio_id, opt_date_override=opt_ts)
         sortino_s = f"{m['sortino']:.3f}" if m.get("sortino") is not None else "—"
         var_s     = f"{m['var_95']*100:.2f}%" if m.get("var_95") is not None else "—"
         return (
@@ -134,6 +145,12 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
             vs_spy,
             gr.update(),  # watch_label — preserve existing value
             gr.update(),  # spy_label — preserve existing value
+            port_sharpe,
+            gr.update(),  # port_sharpe_label — preserve existing value
+            stocks_return,
+            gr.update(),  # stocks_return_label — preserve existing value
+            stocks_sharpe,
+            gr.update(),  # stocks_sharpe_label — preserve existing value
         )
 
     with SessionLocal() as s:
@@ -146,8 +163,8 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
         rf = parse_rf(rf_text)
     except Exception as e:
         out = (f"❌ {e}", "", "", gr.update(value="", label="Sharpe (ann.)"), gr.update(value="", label="Sortino (ann.)"), "", "", None, None, None, "", gr.update()) + ("",) + _DASH_EMPTY
-        result = out + ("",) * (26 - len(out))
-        return result[:26]
+        result = out + ("",) * (32 - len(out))
+        return result[:32]
 
     try:
         result_obj = optimize_portfolio(
@@ -162,8 +179,8 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
         )
     except Exception as e:
         out = (f"❌ {e}", "", "", gr.update(value="", label="Sharpe (ann.)"), gr.update(value="", label="Sortino (ann.)"), "", "", None, None, None, "", gr.update()) + ("",) + _DASH_EMPTY
-        result = out + ("",) * (26 - len(out))
-        return result[:26]
+        result = out + ("",) * (32 - len(out))
+        return result[:32]
 
     from datetime import datetime as _dt
     fig_p, fig_b, fig_f = build_plots(result_obj)
@@ -218,6 +235,6 @@ def run_optimize(budget, target_vol_pct, rf_text, lookback, frontier_samples,
         commentary,
         gr.update(value=new_slider_val),   # opt_target_vol slider
     ) + _dash_outputs(saved_at)
-    # Final safeguard: always return exactly 26 outputs
-    result = out + ("",) * (26 - len(out))
-    return result[:26]
+    # Final safeguard: always return exactly 32 outputs
+    result = out + ("",) * (32 - len(out))
+    return result[:32]
