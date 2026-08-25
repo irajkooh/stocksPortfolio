@@ -13,7 +13,8 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 # LLM
 GROQ_API_KEY  = os.environ.get("GROQ_API_KEY", "")
-GROQ_MODEL    = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
+#GROQ_MODEL    = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
+GROQ_MODEL    = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b")
 OLLAMA_URL    = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL  = os.environ.get("OLLAMA_MODEL", "llama3")
 
